@@ -1,0 +1,16 @@
+{
+  "servers": {
+    "trino": {
+      "command": "uvx",
+      "args": ["--from", ".", "trino-mcp"],
+      "env": {
+        "TRINO_HOST": "${input:trino_host}",
+        "TRINO_PORT": "${input:trino_port}",
+        "TRINO_USER": "${input:trino_user}",
+        "TRINO_HTTP_SCHEME": "${input:trino_http_scheme}",
+        "TRINO_CATALOG": "${input:trino_catalog}",
+        "TRINO_SCHEMA": "${input:trino_schema}"
+      }
+    }
+  }
+}
