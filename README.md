@@ -20,6 +20,14 @@ A simple Model Context Protocol (MCP) server for Trino query engine with OAuth s
 
 ### Option 1: Run with uvx (Recommended)
 
+Once published to PyPI, you can run directly:
+
+```bash
+uvx trino-mcp
+```
+
+For development or local usage:
+
 ```bash
 # Run directly from the repository
 uvx --from . trino-mcp
@@ -28,7 +36,10 @@ uvx --from . trino-mcp
 ### Option 2: Install with uv
 
 ```bash
-# Install the package
+# From PyPI (once published)
+uv pip install trino-mcp
+
+# From local directory
 uv pip install .
 
 # Run the server
@@ -75,6 +86,24 @@ TRINO_OAUTH_TOKEN=your_oauth_token
 
 Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
 
+**After publishing to PyPI:**
+```json
+{
+  "mcpServers": {
+    "trino": {
+      "command": "uvx",
+      "args": ["trino-mcp"],
+      "env": {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino"
+      }
+    }
+  }
+}
+```
+
+**For local development:**
 ```json
 {
   "mcpServers": {
@@ -95,6 +124,24 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 
 Add to `.vscode/mcp.json`:
 
+**After publishing to PyPI:**
+```json
+{
+  "servers": {
+    "trino": {
+      "command": "uvx",
+      "args": ["trino-mcp"],
+      "env": {
+        "TRINO_HOST": "${input:trino_host}",
+        "TRINO_PORT": "${input:trino_port}",
+        "TRINO_USER": "${input:trino_user}"
+      }
+    }
+  }
+}
+```
+
+**For local development:**
 ```json
 {
   "servers": {
