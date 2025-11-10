@@ -1,0 +1,28 @@
+[project]
+name = "trino-mcp"
+version = "0.1.0"
+description = "A simple Model Context Protocol (MCP) server for Trino with OAuth support"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "mcp>=1.6.0",
+    "trino>=0.333.0",
+    "python-dotenv>=1.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "mypy>=1.0.0",
+]
+
+[project.scripts]
+trino-mcp = "trino_mcp.server:main"
