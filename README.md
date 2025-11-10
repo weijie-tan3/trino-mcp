@@ -296,6 +296,36 @@ black src/
 mypy src/
 ```
 
+### Publishing to PyPI
+
+To publish the package to PyPI (requires PyPI credentials):
+
+```bash
+# Build the package
+uv build
+
+# Publish to PyPI (using twine or uv publish)
+# First, ensure you have credentials configured
+uv publish
+
+# Or use twine
+python -m pip install twine
+python -m twine upload dist/*
+```
+
+Once published to PyPI, users can install the package directly:
+
+```bash
+# Using uvx (no installation required)
+uvx trino-mcp
+
+# Using uv
+uv pip install trino-mcp
+
+# Using pip
+pip install trino-mcp
+```
+
 ## License
 
 MIT License - see LICENSE file for details.

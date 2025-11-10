@@ -34,6 +34,13 @@ TRINO_PASSWORD=your-password  # Optional for basic auth
 
 ## Step 2: Run with uvx (Easiest)
 
+### From PyPI (once published)
+```bash
+# Run directly from PyPI without installation
+uvx trino-mcp
+```
+
+### From Local Directory
 ```bash
 # Run directly without installation
 uvx --from . trino-mcp
@@ -43,6 +50,26 @@ The server will start and listen for MCP connections via stdio.
 
 ## Step 3: Test with Claude Desktop
 
+### From PyPI (once published)
+1. Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "trino": {
+      "command": "uvx",
+      "args": ["trino-mcp"],
+      "env": {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino"
+      }
+    }
+  }
+}
+```
+
+### From Local Directory
 1. Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 
 ```json
