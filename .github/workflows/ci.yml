@@ -85,7 +85,8 @@ jobs:
       run: |
         uv build
     
-    - name: Install package
+    - name: Install and test package
       run: |
-        uv pip install --system dist/*.whl
-        python -c "import trino_mcp; print(trino_mcp.__version__)"
+        uv venv
+        uv pip install dist/*.whl
+        uv run python -c "import trino_mcp; print(trino_mcp.__version__)"
