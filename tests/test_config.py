@@ -73,6 +73,7 @@ def test_load_config_basic():
         "TRINO_USER": "trino",
         "TRINO_CATALOG": "hive",
         "TRINO_SCHEMA": "default",
+        "AUTH_METHOD": "NONE",
     },
 )
 def test_load_config_with_defaults():

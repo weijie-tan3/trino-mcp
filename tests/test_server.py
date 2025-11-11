@@ -1,8 +1,23 @@
 """Tests for MCP server module."""
 
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+
+# Set environment variables before importing server module
+@pytest.fixture(scope="module", autouse=True)
+def setup_env():
+    """Setup environment variables for all tests."""
+    os.environ["AUTH_METHOD"] = "NONE"
+    os.environ["TRINO_HOST"] = "localhost"
+    os.environ["TRINO_PORT"] = "8080"
+    os.environ["TRINO_USER"] = "trino"
+    yield
+    # Cleanup
+    for key in ["AUTH_METHOD", "TRINO_HOST", "TRINO_PORT", "TRINO_USER"]:
+        os.environ.pop(key, None)
 
 
 @patch("trino_mcp.server.client")
