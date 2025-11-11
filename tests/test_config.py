@@ -1,7 +1,7 @@
 """Tests for configuration module."""
 
 import os
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -51,6 +51,7 @@ def test_trino_config_with_catalog_schema():
         "TRINO_PORT": "9999",
         "TRINO_USER": "test-user",
         "TRINO_HTTP_SCHEME": "https",
+        "AUTH_METHOD": "NONE",
     },
 )
 def test_load_config_basic():
@@ -89,6 +90,7 @@ def test_load_config_with_defaults():
         "TRINO_PORT": "8080",
         "TRINO_USER": "admin",
         "TRINO_PASSWORD": "secret123",
+        "AUTH_METHOD": "PASSWORD",
     },
 )
 def test_load_config_with_basic_auth():
@@ -100,16 +102,18 @@ def test_load_config_with_basic_auth():
     assert hasattr(config.auth, "_password")
 
 
+@patch("trino_mcp.config.load_dotenv")
 @patch.dict(
     os.environ,
     {
         "TRINO_HOST": "localhost",
         "TRINO_PORT": "8080",
         "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
     },
     clear=True,
 )
-def test_load_config_defaults():
+def test_load_config_defaults(mock_load_dotenv):
     """Test default values when environment variables are not set."""
     config = load_config()
 

@@ -52,6 +52,13 @@ def load_config() -> TrinoConfig:
         port = 443
         additional_kwargs["http_headers"] = {"X-Client-Info": "secured"}
 
+    elif auth_method == "NONE":
+        # No authentication
+        auth = None
+
+    else:
+        raise ValueError(f"Unsupported AUTH_METHOD: {auth_method}")
+
     return TrinoConfig(
         host=host,
         port=port,
