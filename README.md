@@ -10,12 +10,24 @@ uvx trino-mcp
 ```
 
 **Configure** (create `.env` file):
-```bash
-TRINO_HOST=localhost
-TRINO_PORT=8080
-TRINO_USER=trino
-TRINO_PASSWORD=your_password  # Optional
-```
+
+| Variable | Required | Default | Allowed Values | Description |
+|----------|----------|---------|----------------|-------------|
+| `TRINO_HOST` | ✅ | `localhost` | Any hostname/IP | Trino server hostname |
+| `TRINO_PORT` | ✅ | `8080` | Any port number | Trino server port |
+| `TRINO_USER` | ✅ | `trino` | Any username | Trino username |
+| `AUTH_METHOD` | ❌ | `PASSWORD` | `NONE`, `PASSWORD`, `OAUTH2` | Authentication method |
+| `TRINO_PASSWORD` | Conditional* | - | Any password | Required if `AUTH_METHOD=PASSWORD` |
+| `TRINO_HTTP_SCHEME` | ❌ | `http` | `http`, `https` | Connection protocol |
+| `TRINO_CATALOG` | ❌ | - | Any catalog name | Default catalog for queries |
+| `TRINO_SCHEMA` | ❌ | - | Any schema name | Default schema for queries |
+
+**Authentication rules:**
+- `AUTH_METHOD=NONE` - No authentication required
+- `AUTH_METHOD=PASSWORD` - Requires `TRINO_PASSWORD` to be set
+- `AUTH_METHOD=OAUTH2` - OAuth2 flow handled automatically by Trino client
+- If `AUTH_METHOD` is not set, defaults to `PASSWORD`
+
 
 **Use with VS Code** (in `.vscode/mcp.json`):
 ```json
