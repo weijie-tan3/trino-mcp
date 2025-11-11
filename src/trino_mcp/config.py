@@ -19,6 +19,7 @@ class TrinoConfig:
     schema: Optional[str] = None
     http_scheme: str = "http"
     auth: Optional[trino.auth.Authentication] = None
+    additional_kwargs: Optional[dict] = None
 
 
 def load_config() -> TrinoConfig:
@@ -34,15 +35,29 @@ def load_config() -> TrinoConfig:
 
     # Setup authentication based on available credentials
     auth = None
-    password = os.getenv("TRINO_PASSWORD")
+    additional_kwargs = {}
 
-    if password:
-        # Basic authentication
+    auth_method = os.getenv("AUTH_METHOD", "PASSWORD").upper()
+    if auth_method == "PASSWORD":
+        password = os.getenv("TRINO_PASSWORD")
+        if not (user and password):
+            raise ValueError(
+                "TRINO_USER and TRINO_PASSWORD must be set for password authentication"
+            )
         auth = trino.auth.BasicAuthentication(user, password)
 
-    # Note: For OAuth2, you need to provide a redirect handler
-    # This is a simplified version - for production use, implement proper OAuth2 flow
-    # Example: auth = trino.auth.OAuth2Authentication()
+    elif auth_method == "OAUTH2":
+        auth = trino.auth.OAuth2Authentication()
+        http_scheme = "https"
+        port = 443
+        additional_kwargs["http_headers"] = {"X-Client-Info": "secured"}
+
+    elif auth_method == "NONE":
+        # No authentication
+        auth = None
+
+    else:
+        raise ValueError(f"Unsupported AUTH_METHOD: {auth_method}")
 
     return TrinoConfig(
         host=host,
@@ -52,4 +67,5 @@ def load_config() -> TrinoConfig:
         schema=schema,
         http_scheme=http_scheme,
         auth=auth,
+        additional_kwargs=additional_kwargs,
     )

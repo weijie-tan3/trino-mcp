@@ -1,7 +1,7 @@
 """Trino client for executing queries."""
 
 import json
-from typing import List, Dict, Any
+from typing import List
 
 import trino
 from trino.dbapi import Connection, Cursor
@@ -27,6 +27,7 @@ class TrinoClient:
             schema=self.config.schema,
             http_scheme=self.config.http_scheme,
             auth=self.config.auth,
+            **(self.config.additional_kwargs or {}),
         )
 
     def execute_query(self, query: str) -> str:

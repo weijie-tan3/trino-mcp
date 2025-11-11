@@ -1,13 +1,25 @@
 """Trino MCP Server - Main server implementation."""
 
+import logging
+import sys
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 from .config import load_config
 from .client import TrinoClient
 
+# Setup logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stderr)],
+)
+logger = logging.getLogger(__name__)
+
 # Initialize configuration and client
+logger.info("Loading Trino configuration...")
 config = load_config()
+logger.info(f"Connected to Trino at {config.host}:{config.port}")
 client = TrinoClient(config)
 
 # Initialize MCP server
@@ -20,10 +32,13 @@ mcp = FastMCP(
 @mcp.tool()
 def list_catalogs() -> str:
     """List all available Trino catalogs."""
+    logger.info("Listing catalogs...")
     try:
         catalogs = client.list_catalogs()
+        logger.debug(f"Found {len(catalogs)} catalogs")
         return "\n".join(catalogs)
     except Exception as e:
+        logger.error(f"Error listing catalogs: {str(e)}", exc_info=True)
         return f"Error listing catalogs: {str(e)}"
 
 
@@ -34,10 +49,13 @@ def list_schemas(catalog: str = Field(description="The catalog name")) -> str:
     Args:
         catalog: The name of the catalog to list schemas from
     """
+    logger.info(f"Listing schemas for catalog: {catalog}")
     try:
         schemas = client.list_schemas(catalog)
+        logger.debug(f"Found {len(schemas)} schemas")
         return "\n".join(schemas)
     except Exception as e:
+        logger.error(f"Error listing schemas: {str(e)}", exc_info=True)
         return f"Error listing schemas: {str(e)}"
 
 
@@ -52,10 +70,13 @@ def list_tables(
         catalog: The name of the catalog
         schema: The name of the schema
     """
+    logger.info(f"Listing tables for {catalog}.{schema}")
     try:
         tables = client.list_tables(catalog, schema)
+        logger.debug(f"Found {len(tables)} tables")
         return "\n".join(tables)
     except Exception as e:
+        logger.error(f"Error listing tables: {str(e)}", exc_info=True)
         return f"Error listing tables: {str(e)}"
 
 
@@ -72,11 +93,15 @@ def describe_table(
         catalog: The catalog name (optional if default is configured)
         schema: The schema name (optional if default is configured)
     """
+    logger.info(f"Describing table: {catalog}.{schema}.{table}")
     try:
         cat = catalog if catalog else ""
         sch = schema if schema else ""
-        return client.describe_table(cat, sch, table)
+        result = client.describe_table(cat, sch, table)
+        logger.debug(f"Table description retrieved successfully")
+        return result
     except Exception as e:
+        logger.error(f"Error describing table: {str(e)}", exc_info=True)
         return f"Error describing table: {str(e)}"
 
 
@@ -87,9 +112,13 @@ def execute_query(query: str = Field(description="The SQL query to execute")) ->
     Args:
         query: The SQL query to execute
     """
+    logger.info(f"Executing query: {query[:100]}...")
     try:
-        return client.execute_query(query)
+        result = client.execute_query(query)
+        logger.debug(f"Query executed successfully")
+        return result
     except Exception as e:
+        logger.error(f"Error executing query: {str(e)}", exc_info=True)
         return f"Error executing query: {str(e)}"
 
 
@@ -106,11 +135,15 @@ def show_create_table(
         catalog: The catalog name (optional if default is configured)
         schema: The schema name (optional if default is configured)
     """
+    logger.info(f"Getting CREATE TABLE for: {catalog}.{schema}.{table}")
     try:
         cat = catalog if catalog else ""
         sch = schema if schema else ""
-        return client.show_create_table(cat, sch, table)
+        result = client.show_create_table(cat, sch, table)
+        logger.debug(f"CREATE TABLE retrieved successfully")
+        return result
     except Exception as e:
+        logger.error(f"Error showing CREATE TABLE: {str(e)}", exc_info=True)
         return f"Error showing CREATE TABLE: {str(e)}"
 
 
@@ -127,17 +160,23 @@ def get_table_stats(
         catalog: The catalog name (optional if default is configured)
         schema: The schema name (optional if default is configured)
     """
+    logger.info(f"Getting table stats for: {catalog}.{schema}.{table}")
     try:
         cat = catalog if catalog else ""
         sch = schema if schema else ""
-        return client.get_table_stats(cat, sch, table)
+        result = client.get_table_stats(cat, sch, table)
+        logger.debug(f"Table stats retrieved successfully")
+        return result
     except Exception as e:
+        logger.error(f"Error getting table stats: {str(e)}", exc_info=True)
         return f"Error getting table stats: {str(e)}"
 
 
 def main():
     """Main entry point for the server."""
+    logger.info("Starting Trino MCP Server...")
     mcp.run()
+    logger.info("Trino MCP Server stopped")
 
 
 if __name__ == "__main__":
