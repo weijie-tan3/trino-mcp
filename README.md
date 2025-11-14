@@ -4,11 +4,11 @@ A simple Model Context Protocol (MCP) server for Trino query engine with OAuth s
 
 ## Quick Start (TLDR)
 
-**Using with Claude Desktop or VS Code?** Add to your config:
+**Using with VS Code?** Add to `.vscode/mcp.json`:
 
 ```json
 {
-  "mcpServers": {
+  "servers": {
     "trino": {
       "command": "uvx",
       "args": ["trino-mcp"],
