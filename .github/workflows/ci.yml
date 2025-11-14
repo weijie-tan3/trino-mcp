@@ -90,3 +90,27 @@ jobs:
         uv venv
         uv pip install dist/*.whl
         uv run python -c "import trino_mcp; print(trino_mcp.__version__)"
+  
+  generate-docs:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    
+    - name: Generate tool documentation
+      run: |
+        python3 scripts/generate_tool_docs.py
+    
+    - name: Upload tool documentation
+      uses: actions/upload-artifact@v4
+      with:
+        name: tool-documentation
+        path: |
+          TOOLS.md
+          tools.json
+        retention-days: 90
