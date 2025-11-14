@@ -47,7 +47,7 @@ That's it! The server will connect to your Trino cluster and provide query capab
 
 ## Prerequisites
 
-- Python 3.11 or higher
+- Python 3.10 or higher
 - A running Trino server
 - (Optional) Trino credentials for authentication
 
