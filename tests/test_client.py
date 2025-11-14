@@ -18,6 +18,7 @@ def config():
         user="trino",
         catalog="test_catalog",
         schema="test_schema",
+        allow_write_queries=True,  # Enable for backward compatibility with existing tests
     )
 
 
@@ -199,3 +200,222 @@ def test_get_table_stats(config, mock_connection):
     data = json.loads(result)
     assert len(data) == 2
     mock_cursor.execute.assert_called_with("SHOW STATS FOR catalog1.schema1.table1")
+
+
+# Tests for query permission feature
+def test_is_write_query_insert(config, mock_connection):
+    """Test detection of INSERT query."""
+    client = TrinoClient(config)
+    assert client._is_write_query("INSERT INTO table VALUES (1, 2)")
+    assert client._is_write_query("insert into table values (1, 2)")
+    assert client._is_write_query("  INSERT  INTO table VALUES (1, 2)  ")
+
+
+def test_is_write_query_update(config, mock_connection):
+    """Test detection of UPDATE query."""
+    client = TrinoClient(config)
+    assert client._is_write_query("UPDATE table SET col = 1")
+    assert client._is_write_query("update table set col = 1")
+
+
+def test_is_write_query_delete(config, mock_connection):
+    """Test detection of DELETE query."""
+    client = TrinoClient(config)
+    assert client._is_write_query("DELETE FROM table WHERE id = 1")
+    assert client._is_write_query("delete from table")
+
+
+def test_is_write_query_create(config, mock_connection):
+    """Test detection of CREATE query."""
+    client = TrinoClient(config)
+    assert client._is_write_query("CREATE TABLE test (id INT)")
+    assert client._is_write_query("create table test (id int)")
+    assert client._is_write_query("CREATE OR REPLACE TABLE test (id INT)")
+
+
+def test_is_write_query_drop(config, mock_connection):
+    """Test detection of DROP query."""
+    client = TrinoClient(config)
+    assert client._is_write_query("DROP TABLE test")
+    assert client._is_write_query("drop table test")
+
+
+def test_is_write_query_alter(config, mock_connection):
+    """Test detection of ALTER query."""
+    client = TrinoClient(config)
+    assert client._is_write_query("ALTER TABLE test ADD COLUMN col INT")
+    assert client._is_write_query("alter table test drop column col")
+
+
+def test_is_write_query_truncate(config, mock_connection):
+    """Test detection of TRUNCATE query."""
+    client = TrinoClient(config)
+    assert client._is_write_query("TRUNCATE TABLE test")
+    assert client._is_write_query("truncate table test")
+
+
+def test_is_write_query_merge(config, mock_connection):
+    """Test detection of MERGE query."""
+    client = TrinoClient(config)
+    assert client._is_write_query("MERGE INTO target USING source ON target.id = source.id")
+
+
+def test_is_write_query_with_comments(config, mock_connection):
+    """Test detection of write query with comments."""
+    client = TrinoClient(config)
+    assert client._is_write_query("-- This is a comment\nINSERT INTO table VALUES (1)")
+    assert client._is_write_query("/* Multi-line\n comment */ DELETE FROM table")
+
+
+def test_is_read_query_select(config, mock_connection):
+    """Test that SELECT queries are not flagged as write queries."""
+    client = TrinoClient(config)
+    assert not client._is_write_query("SELECT * FROM table")
+    assert not client._is_write_query("select * from table")
+    assert not client._is_write_query("SELECT col FROM table WHERE id = 1")
+
+
+def test_is_read_query_show(config, mock_connection):
+    """Test that SHOW queries are not flagged as write queries."""
+    client = TrinoClient(config)
+    assert not client._is_write_query("SHOW TABLES")
+    assert not client._is_write_query("SHOW SCHEMAS FROM catalog")
+    assert not client._is_write_query("SHOW CREATE TABLE test")
+
+
+def test_is_read_query_describe(config, mock_connection):
+    """Test that DESCRIBE queries are not flagged as write queries."""
+    client = TrinoClient(config)
+    assert not client._is_write_query("DESCRIBE table")
+    assert not client._is_write_query("describe table")
+
+
+def test_is_read_query_explain(config, mock_connection):
+    """Test that EXPLAIN queries are not flagged as write queries."""
+    client = TrinoClient(config)
+    assert not client._is_write_query("EXPLAIN SELECT * FROM table")
+    assert not client._is_write_query("EXPLAIN ANALYZE SELECT * FROM table")
+
+
+def test_execute_query_write_disabled_blocks_insert(mock_connection):
+    """Test that INSERT is blocked when write queries are disabled."""
+    config = TrinoConfig(
+        host="localhost", port=8080, user="trino", allow_write_queries=False
+    )
+    client = TrinoClient(config)
+
+    with pytest.raises(PermissionError, match="Write queries are disabled"):
+        client.execute_query("INSERT INTO table VALUES (1, 2)")
+
+
+def test_execute_query_write_disabled_blocks_update(mock_connection):
+    """Test that UPDATE is blocked when write queries are disabled."""
+    config = TrinoConfig(
+        host="localhost", port=8080, user="trino", allow_write_queries=False
+    )
+    client = TrinoClient(config)
+
+    with pytest.raises(PermissionError, match="Write queries are disabled"):
+        client.execute_query("UPDATE table SET col = 1")
+
+
+def test_execute_query_write_disabled_blocks_delete(mock_connection):
+    """Test that DELETE is blocked when write queries are disabled."""
+    config = TrinoConfig(
+        host="localhost", port=8080, user="trino", allow_write_queries=False
+    )
+    client = TrinoClient(config)
+
+    with pytest.raises(PermissionError, match="Write queries are disabled"):
+        client.execute_query("DELETE FROM table WHERE id = 1")
+
+
+def test_execute_query_write_disabled_blocks_create(mock_connection):
+    """Test that CREATE is blocked when write queries are disabled."""
+    config = TrinoConfig(
+        host="localhost", port=8080, user="trino", allow_write_queries=False
+    )
+    client = TrinoClient(config)
+
+    with pytest.raises(PermissionError, match="Write queries are disabled"):
+        client.execute_query("CREATE TABLE test (id INT)")
+
+
+def test_execute_query_write_disabled_blocks_drop(mock_connection):
+    """Test that DROP is blocked when write queries are disabled."""
+    config = TrinoConfig(
+        host="localhost", port=8080, user="trino", allow_write_queries=False
+    )
+    client = TrinoClient(config)
+
+    with pytest.raises(PermissionError, match="Write queries are disabled"):
+        client.execute_query("DROP TABLE test")
+
+
+def test_execute_query_write_disabled_allows_select(mock_connection):
+    """Test that SELECT is allowed when write queries are disabled."""
+    config = TrinoConfig(
+        host="localhost", port=8080, user="trino", allow_write_queries=False
+    )
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("col1",)]
+    mock_cursor.fetchall.return_value = [("val1",)]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    result = client.execute_query("SELECT * FROM table")
+
+    data = json.loads(result)
+    assert len(data) == 1
+    assert data[0] == {"col1": "val1"}
+
+
+def test_execute_query_write_enabled_allows_insert(mock_connection):
+    """Test that INSERT is allowed when write queries are enabled."""
+    config = TrinoConfig(
+        host="localhost", port=8080, user="trino", allow_write_queries=True
+    )
+    mock_cursor = MagicMock()
+    mock_cursor.description = None
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    result = client.execute_query("INSERT INTO table VALUES (1, 2)")
+
+    data = json.loads(result)
+    assert data["status"] == "success"
+
+
+def test_execute_query_write_enabled_allows_create(mock_connection):
+    """Test that CREATE is allowed when write queries are enabled."""
+    config = TrinoConfig(
+        host="localhost", port=8080, user="trino", allow_write_queries=True
+    )
+    mock_cursor = MagicMock()
+    mock_cursor.description = None
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    result = client.execute_query("CREATE TABLE test (id INT)")
+
+    data = json.loads(result)
+    assert data["status"] == "success"
+
+
+def test_execute_query_write_enabled_allows_select(mock_connection):
+    """Test that SELECT is allowed when write queries are enabled."""
+    config = TrinoConfig(
+        host="localhost", port=8080, user="trino", allow_write_queries=True
+    )
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("col1",)]
+    mock_cursor.fetchall.return_value = [("val1",)]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    result = client.execute_query("SELECT * FROM table")
+
+    data = json.loads(result)
+    assert len(data) == 1
+    assert data[0] == {"col1": "val1"}
+

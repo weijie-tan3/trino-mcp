@@ -89,6 +89,11 @@ TRINO_HTTP_SCHEME=http
 TRINO_CATALOG=my_catalog
 TRINO_SCHEMA=my_schema
 
+# Query Execution Permissions:
+# Set to "true" to allow write queries (INSERT, UPDATE, DELETE, CREATE, DROP, etc.)
+# Set to "false" (default) to allow only read queries (SELECT, SHOW, DESCRIBE, etc.)
+ALLOW_WRITE_QUERIES=false
+
 # Authentication Options (choose one):
 
 # Option 1: Basic Authentication
@@ -210,6 +215,10 @@ Execute a SQL query and return the results in JSON format.
 
 **Parameters**:
 - `query` (string, required): The SQL query to execute
+
+**Note**: By default, only read-only queries (SELECT, SHOW, DESCRIBE, etc.) are allowed. 
+To enable write queries (INSERT, UPDATE, DELETE, CREATE, DROP, etc.), set the environment 
+variable `ALLOW_WRITE_QUERIES=true`.
 
 **Example**:
 ```
