@@ -18,9 +18,27 @@ A simple Model Context Protocol (MCP) server for Trino query engine with OAuth s
 
 ## Installation
 
-### Option 1: Run with uvx (Recommended)
+### Option 0: VS Code
+Add to `.vscode/mcp.json`:
 
-Once published to PyPI, you can run directly:
+**After publishing to PyPI:**
+```json
+{
+  "servers": {
+    "trino": {
+      "command": "uvx",
+      "args": ["trino-mcp"],
+      "env": {
+        "TRINO_HOST": "${trino_host_address}",
+        "TRINO_USER": "${env:USER}",
+        "AUTH_METHOD": "OAuth2"
+      }
+    }
+  }
+}
+```
+
+### Option 1: Run with uvx
 
 ```bash
 uvx trino-mcp
@@ -121,25 +139,6 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 ```
 
 ### With VS Code
-
-Add to `.vscode/mcp.json`:
-
-**After publishing to PyPI:**
-```json
-{
-  "servers": {
-    "trino": {
-      "command": "uvx",
-      "args": ["trino-mcp"],
-      "env": {
-        "TRINO_HOST": "${input:trino_host}",
-        "TRINO_PORT": "${input:trino_port}",
-        "TRINO_USER": "${input:trino_user}"
-      }
-    }
-  }
-}
-```
 
 **For local development:**
 ```json
