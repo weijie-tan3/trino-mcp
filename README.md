@@ -12,7 +12,7 @@ A simple Model Context Protocol (MCP) server for Trino query engine with OAuth s
 
 ## Prerequisites
 
-- Python 3.11 or higher
+- Python 3.10 or higher
 - A running Trino server
 - (Optional) Trino credentials for authentication
 
