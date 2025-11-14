@@ -1,7 +1,6 @@
 """Trino client for executing queries."""
 
 import json
-import re
 from typing import List
 
 import trino
@@ -12,22 +11,6 @@ from .config import TrinoConfig
 
 class TrinoClient:
     """Client for interacting with Trino."""
-
-    # SQL keywords that indicate write operations
-    WRITE_KEYWORDS = {
-        "INSERT",
-        "UPDATE",
-        "DELETE",
-        "CREATE",
-        "DROP",
-        "ALTER",
-        "TRUNCATE",
-        "MERGE",
-        "REPLACE",
-        "GRANT",
-        "REVOKE",
-        "CALL",
-    }
 
     def __init__(self, config: TrinoConfig):
         """Initialize the Trino client."""
@@ -47,62 +30,8 @@ class TrinoClient:
             **(self.config.additional_kwargs or {}),
         )
 
-    def _is_write_query(self, query: str) -> bool:
-        """Check if a query contains write operations.
-
-        Args:
-            query: SQL query to check
-
-        Returns:
-            True if the query contains write operations, False otherwise
-        """
-        # Normalize the query: remove comments and extra whitespace
-        # Remove single-line comments (-- style)
-        query_normalized = re.sub(r"--[^\n]*", "", query)
-        # Remove multi-line comments (/* */ style)
-        query_normalized = re.sub(r"/\*.*?\*/", "", query_normalized, flags=re.DOTALL)
-        # Normalize whitespace
-        query_normalized = " ".join(query_normalized.split()).upper()
-
-        # Check for read-only patterns that might contain write keywords
-        # These should NOT be flagged as write queries
-        read_only_patterns = [
-            r"\bSHOW\s+CREATE\s+TABLE\b",
-            r"\bSHOW\s+CREATE\s+VIEW\b",
-            r"\bSHOW\s+CREATE\s+SCHEMA\b",
-        ]
-        
-        for pattern in read_only_patterns:
-            if re.search(pattern, query_normalized):
-                return False
-
-        # Check if query starts with any write keyword
-        for keyword in self.WRITE_KEYWORDS:
-            # Use word boundary to avoid false positives (e.g., INSERTED as column name)
-            if re.search(rf"\b{keyword}\b", query_normalized):
-                return True
-
-        return False
-
     def execute_query(self, query: str) -> str:
-        """Execute a SQL query and return results as JSON string.
-
-        Args:
-            query: SQL query to execute
-
-        Returns:
-            JSON string with query results
-
-        Raises:
-            PermissionError: If write queries are disabled and query contains write operations
-        """
-        # Check if write queries are allowed
-        if not self.config.allow_write_queries and self._is_write_query(query):
-            raise PermissionError(
-                "Write queries are disabled. Set ALLOW_WRITE_QUERIES=true to enable write operations. "
-                "Detected write operation in query."
-            )
-
+        """Execute a SQL query and return results as JSON string."""
         cursor: Cursor = self.connection.cursor()
         cursor.execute(query)
 

@@ -86,10 +86,42 @@ def test_describe_table_tool(mock_client):
 
 
 @patch("trino_mcp.server.client")
-def test_execute_query_tool(mock_client):
-    """Test execute_query tool."""
+def test_execute_query_read_only_tool(mock_client):
+    """Test execute_query_read_only tool."""
+    from trino_mcp.server import execute_query_read_only
+
+    mock_client.execute_query.return_value = '[{"col": "value"}]'
+
+    result = execute_query_read_only("SELECT 1")
+
+    assert "value" in result
+    mock_client.execute_query.assert_called_once_with("SELECT 1")
+
+
+@patch("trino_mcp.server.client")
+@patch("trino_mcp.server.config")
+def test_execute_query_tool_write_disabled(mock_config, mock_client):
+    """Test execute_query tool with write queries disabled."""
     from trino_mcp.server import execute_query
 
+    mock_config.allow_write_queries = False
+
+    result = execute_query("INSERT INTO table VALUES (1)")
+
+    assert "Write queries are disabled" in result
+    assert "ALLOW_WRITE_QUERIES=true" in result
+    assert "execute_query_read_only" in result
+    # Client should not be called when write queries are disabled
+    mock_client.execute_query.assert_not_called()
+
+
+@patch("trino_mcp.server.client")
+@patch("trino_mcp.server.config")
+def test_execute_query_tool_write_enabled(mock_config, mock_client):
+    """Test execute_query tool with write queries enabled."""
+    from trino_mcp.server import execute_query
+
+    mock_config.allow_write_queries = True
     mock_client.execute_query.return_value = '[{"col": "value"}]'
 
     result = execute_query("SELECT 1")

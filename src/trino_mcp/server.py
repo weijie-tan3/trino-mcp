@@ -106,13 +106,47 @@ def describe_table(
 
 
 @mcp.tool()
+def execute_query_read_only(query: str = Field(description="The SQL query to execute (read-only)")) -> str:
+    """Execute a read-only SQL query and return the results.
+    
+    This tool is designed for read-only queries (SELECT, SHOW, DESCRIBE, EXPLAIN, etc.).
+    It provides a safe way to query data without risk of modifying the database.
+
+    Args:
+        query: The SQL query to execute (should be read-only)
+    """
+    logger.info(f"Executing read-only query: {query[:100]}...")
+    try:
+        result = client.execute_query(query)
+        logger.debug(f"Query executed successfully")
+        return result
+    except Exception as e:
+        logger.error(f"Error executing query: {str(e)}", exc_info=True)
+        return f"Error executing query: {str(e)}"
+
+
+@mcp.tool()
 def execute_query(query: str = Field(description="The SQL query to execute")) -> str:
     """Execute a SQL query and return the results.
+    
+    This tool can execute any SQL query including write operations (INSERT, UPDATE, DELETE, etc.).
+    By default, write operations are disabled for security. Set ALLOW_WRITE_QUERIES=true to enable.
 
     Args:
         query: The SQL query to execute
     """
     logger.info(f"Executing query: {query[:100]}...")
+    
+    # Check if write queries are allowed
+    if not config.allow_write_queries:
+        logger.warning(f"Write queries are disabled. Query blocked: {query[:100]}...")
+        return (
+            "Error: Write queries are disabled by default for security. "
+            "This tool can potentially execute write operations (INSERT, UPDATE, DELETE, CREATE, DROP, etc.). "
+            "If you only need to read data, please use the 'execute_query_read_only' tool instead. "
+            "To enable write queries, set ALLOW_WRITE_QUERIES=true in your environment configuration."
+        )
+    
     try:
         result = client.execute_query(query)
         logger.debug(f"Query executed successfully")

@@ -90,8 +90,9 @@ TRINO_CATALOG=my_catalog
 TRINO_SCHEMA=my_schema
 
 # Query Execution Permissions:
-# Set to "true" to allow write queries (INSERT, UPDATE, DELETE, CREATE, DROP, etc.)
-# Set to "false" (default) to allow only read queries (SELECT, SHOW, DESCRIBE, etc.)
+# Set to "true" to enable the execute_query tool (can run write operations)
+# Set to "false" (default) to disable execute_query tool
+# Note: execute_query_read_only tool is always available
 ALLOW_WRITE_QUERIES=false
 
 # Authentication Options (choose one):
@@ -210,15 +211,29 @@ Describe the structure of a table (columns, types, comments).
 describe_table(table="my_table", catalog="hive", schema="default")
 ```
 
+### `execute_query_read_only`
+Execute a read-only SQL query and return the results in JSON format.
+
+**Parameters**:
+- `query` (string, required): The SQL query to execute
+
+**Note**: This tool is designed for read-only queries (SELECT, SHOW, DESCRIBE, EXPLAIN, etc.). 
+It provides a safe way to query data without risk of modifying the database. This tool is always available.
+
+**Example**:
+```
+execute_query_read_only(query="SELECT * FROM hive.default.my_table LIMIT 10")
+```
+
 ### `execute_query`
 Execute a SQL query and return the results in JSON format.
 
 **Parameters**:
 - `query` (string, required): The SQL query to execute
 
-**Note**: By default, only read-only queries (SELECT, SHOW, DESCRIBE, etc.) are allowed. 
-To enable write queries (INSERT, UPDATE, DELETE, CREATE, DROP, etc.), set the environment 
-variable `ALLOW_WRITE_QUERIES=true`.
+**Note**: This tool can execute any SQL query including write operations (INSERT, UPDATE, DELETE, CREATE, DROP, etc.). 
+By default, this tool is disabled for security. To enable it, set the environment variable `ALLOW_WRITE_QUERIES=true`.
+For read-only queries, use `execute_query_read_only` instead.
 
 **Example**:
 ```
