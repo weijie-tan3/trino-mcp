@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
+from trino_mcp import __version__
 from trino_mcp.client import TrinoClient
 from trino_mcp.config import TrinoConfig
 
@@ -92,7 +93,9 @@ def test_list_schemas(config, mock_connection):
     schemas = client.list_schemas("test_catalog")
 
     assert schemas == ["schema1", "schema2"]
-    mock_cursor.execute.assert_called_with("SHOW SCHEMAS FROM test_catalog")
+    mock_cursor.execute.assert_called_with(
+        f"-- trino, trino-mcp v{__version__} --\nSHOW SCHEMAS FROM test_catalog"
+    )
 
 
 def test_list_schemas_with_default(config, mock_connection):
@@ -106,7 +109,9 @@ def test_list_schemas_with_default(config, mock_connection):
     schemas = client.list_schemas("")
 
     assert schemas == ["schema1"]
-    mock_cursor.execute.assert_called_with("SHOW SCHEMAS FROM test_catalog")
+    mock_cursor.execute.assert_called_with(
+        f"-- trino, trino-mcp v{__version__} --\nSHOW SCHEMAS FROM test_catalog"
+    )
 
 
 def test_list_schemas_no_catalog_error(mock_connection):
@@ -129,7 +134,9 @@ def test_list_tables(config, mock_connection):
     tables = client.list_tables("catalog1", "schema1")
 
     assert tables == ["table1", "table2"]
-    mock_cursor.execute.assert_called_with("SHOW TABLES FROM catalog1.schema1")
+    mock_cursor.execute.assert_called_with(
+        f"-- trino, trino-mcp v{__version__} --\nSHOW TABLES FROM catalog1.schema1"
+    )
 
 
 def test_list_tables_with_defaults(config, mock_connection):
@@ -143,7 +150,9 @@ def test_list_tables_with_defaults(config, mock_connection):
     tables = client.list_tables("", "")
 
     assert tables == ["table1"]
-    mock_cursor.execute.assert_called_with("SHOW TABLES FROM test_catalog.test_schema")
+    mock_cursor.execute.assert_called_with(
+        f"-- trino, trino-mcp v{__version__} --\nSHOW TABLES FROM test_catalog.test_schema"
+    )
 
 
 def test_list_tables_missing_catalog_error(mock_connection):
@@ -169,7 +178,9 @@ def test_describe_table(config, mock_connection):
 
     data = json.loads(result)
     assert len(data) == 2
-    mock_cursor.execute.assert_called_with("DESCRIBE catalog1.schema1.table1")
+    mock_cursor.execute.assert_called_with(
+        f"-- trino, trino-mcp v{__version__} --\nDESCRIBE catalog1.schema1.table1"
+    )
 
 
 def test_show_create_table(config, mock_connection):
@@ -183,7 +194,9 @@ def test_show_create_table(config, mock_connection):
     result = client.show_create_table("catalog1", "schema1", "table1")
 
     assert result == "CREATE TABLE test (id INT)"
-    mock_cursor.execute.assert_called_with("SHOW CREATE TABLE catalog1.schema1.table1")
+    mock_cursor.execute.assert_called_with(
+        f"-- trino, trino-mcp v{__version__} --\nSHOW CREATE TABLE catalog1.schema1.table1"
+    )
 
 
 def test_get_table_stats(config, mock_connection):
@@ -198,4 +211,52 @@ def test_get_table_stats(config, mock_connection):
 
     data = json.loads(result)
     assert len(data) == 2
-    mock_cursor.execute.assert_called_with("SHOW STATS FOR catalog1.schema1.table1")
+    mock_cursor.execute.assert_called_with(
+        f"-- trino, trino-mcp v{__version__} --\nSHOW STATS FOR catalog1.schema1.table1"
+    )
+
+
+def test_watermark_addition(config, mock_connection):
+    """Test that watermark is correctly added to queries."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("result",)]
+    mock_cursor.fetchall.return_value = [("1",)]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+
+    # Test with a simple query
+    result = client.execute_query("SELECT 1")
+
+    # Verify the watermark was added
+    expected_query = f"-- trino, trino-mcp v{__version__} --\nSELECT 1"
+    mock_cursor.execute.assert_called_with(expected_query)
+
+    # Verify the watermark includes the username
+    call_args = mock_cursor.execute.call_args[0][0]
+    assert call_args.startswith(f"-- trino, trino-mcp v{__version__} --\n")
+
+
+def test_watermark_with_different_username(mock_connection):
+    """Test that watermark uses the configured username."""
+    config = TrinoConfig(
+        host="localhost",
+        port=8080,
+        user="custom_user",
+        catalog="test_catalog",
+        schema="test_schema",
+    )
+
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("result",)]
+    mock_cursor.fetchall.return_value = [("1",)]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+
+    # Test with a simple query
+    result = client.execute_query("SELECT 1")
+
+    # Verify the watermark includes the correct username
+    expected_query = f"-- custom_user, trino-mcp v{__version__} --\nSELECT 1"
+    mock_cursor.execute.assert_called_with(expected_query)
