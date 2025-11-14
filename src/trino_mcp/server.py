@@ -2,6 +2,9 @@
 
 import logging
 import sys
+import sqlparse
+from sqlparse.sql import Statement
+from sqlparse.tokens import Keyword, DML
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
@@ -27,6 +30,73 @@ mcp = FastMCP(
     name="Trino MCP Server",
     instructions="A simple Model Context Protocol server for Trino query engine with OAuth support.",
 )
+
+
+def _is_read_only_query(query: str) -> bool:
+    """Check if a SQL query is read-only using SQL parsing.
+    
+    Args:
+        query: The SQL query to check
+        
+    Returns:
+        True if the query is read-only, False otherwise
+    """
+    # Parse the SQL query
+    parsed = sqlparse.parse(query)
+    if not parsed:
+        return False
+    
+    # Check the first statement
+    statement = parsed[0]
+    
+    # Get the first meaningful token (skip whitespace and comments)
+    first_token = None
+    for token in statement.tokens:
+        if token.ttype not in (sqlparse.tokens.Whitespace, sqlparse.tokens.Comment.Single, 
+                               sqlparse.tokens.Comment.Multiline):
+            first_token = token
+            break
+    
+    if not first_token:
+        return False
+    
+    # Check if it's a read-only statement type
+    # Read-only: SELECT, SHOW, DESCRIBE, EXPLAIN, WITH (for CTEs with SELECT)
+    # Write: INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, TRUNCATE, MERGE, GRANT, REVOKE, etc.
+    token_value = first_token.value.upper()
+    
+    read_only_keywords = {'SELECT', 'SHOW', 'DESCRIBE', 'DESC', 'EXPLAIN', 'WITH'}
+    write_keywords = {'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 
+                      'TRUNCATE', 'MERGE', 'REPLACE', 'GRANT', 'REVOKE', 'CALL'}
+    
+    # Check for write operations
+    if any(token_value.startswith(keyword) for keyword in write_keywords):
+        return False
+    
+    # Check for read-only operations
+    if any(token_value.startswith(keyword) for keyword in read_only_keywords):
+        return True
+    
+    # Default to not read-only for safety
+    return False
+
+
+def _try_execute_query(query: str) -> str:
+    """Common function to execute a query.
+    
+    Args:
+        query: The SQL query to execute
+        
+    Returns:
+        The query results as a JSON string or error message
+    """
+    try:
+        result = client.execute_query(query)
+        logger.debug(f"Query executed successfully")
+        return result
+    except Exception as e:
+        logger.error(f"Error executing query: {str(e)}", exc_info=True)
+        return f"Error executing query: {str(e)}"
 
 
 @mcp.tool()
@@ -110,19 +180,25 @@ def execute_query_read_only(query: str = Field(description="The SQL query to exe
     """Execute a read-only SQL query and return the results.
     
     This tool is designed for read-only queries (SELECT, SHOW, DESCRIBE, EXPLAIN, etc.).
-    It provides a safe way to query data without risk of modifying the database.
+    It validates that the query is read-only before execution.
 
     Args:
-        query: The SQL query to execute (should be read-only)
+        query: The SQL query to execute (must be read-only)
     """
     logger.info(f"Executing read-only query: {query[:100]}...")
-    try:
-        result = client.execute_query(query)
-        logger.debug(f"Query executed successfully")
-        return result
-    except Exception as e:
-        logger.error(f"Error executing query: {str(e)}", exc_info=True)
-        return f"Error executing query: {str(e)}"
+    
+    # Check if the query is actually read-only
+    if not _is_read_only_query(query):
+        logger.warning(f"Non-read-only query blocked: {query[:100]}...")
+        return (
+            "Error: This query does not appear to be read-only. "
+            "The execute_query_read_only tool only accepts SELECT, SHOW, DESCRIBE, and EXPLAIN queries. "
+            "If you need to execute write operations (INSERT, UPDATE, DELETE, CREATE, DROP, etc.), "
+            "use the 'execute_query' tool instead (requires ALLOW_WRITE_QUERIES=true)."
+        )
+    
+    # Execute the query using the common function
+    return _try_execute_query(query)
 
 
 @mcp.tool()
@@ -147,13 +223,8 @@ def execute_query(query: str = Field(description="The SQL query to execute")) ->
             "To enable write queries, set ALLOW_WRITE_QUERIES=true in your environment configuration."
         )
     
-    try:
-        result = client.execute_query(query)
-        logger.debug(f"Query executed successfully")
-        return result
-    except Exception as e:
-        logger.error(f"Error executing query: {str(e)}", exc_info=True)
-        return f"Error executing query: {str(e)}"
+    # Execute the query using the common function
+    return _try_execute_query(query)
 
 
 @mcp.tool()

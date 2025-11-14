@@ -23,6 +23,7 @@ dependencies = [
     "mcp>=1.6.0",
     "trino>=0.333.0",
     "python-dotenv>=1.0.0",
+    "sqlparse>=0.5.0",
 ]
 
 [project.urls]

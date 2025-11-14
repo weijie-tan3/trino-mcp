@@ -218,7 +218,8 @@ Execute a read-only SQL query and return the results in JSON format.
 - `query` (string, required): The SQL query to execute
 
 **Note**: This tool is designed for read-only queries (SELECT, SHOW, DESCRIBE, EXPLAIN, etc.). 
-It provides a safe way to query data without risk of modifying the database. This tool is always available.
+It validates queries using SQL parsing to ensure they are read-only before execution. 
+Write operations (INSERT, UPDATE, DELETE, CREATE, DROP, etc.) will be rejected. This tool is always available.
 
 **Example**:
 ```
@@ -237,7 +238,7 @@ For read-only queries, use `execute_query_read_only` instead.
 
 **Example**:
 ```
-execute_query(query="SELECT * FROM hive.default.my_table LIMIT 10")
+execute_query(query="INSERT INTO hive.default.my_table VALUES (1, 'data')")
 ```
 
 ### `show_create_table`
