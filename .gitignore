@@ -201,6 +201,10 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# Generated documentation (available as CI artifacts)
+TOOLS.md
+tools.json
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
