@@ -193,87 +193,21 @@ python -m trino_mcp.server
 
 ## Available Tools
 
-### `list_catalogs`
-List all available catalogs in the Trino cluster.
+The Trino MCP server provides the following tools. For the most up-to-date documentation, see the [CI-generated tool documentation](../../actions) (available as artifacts in CI runs).
 
-**Parameters**: None
+**Quick summary:**
+- `list_catalogs` - List all available Trino catalogs
+- `list_schemas` - List all schemas in a catalog
+- `list_tables` - List all tables in a schema
+- `describe_table` - Describe the structure of a table
+- `execute_query` - Execute a SQL query and return results
+- `show_create_table` - Show the CREATE TABLE statement for a table
+- `get_table_stats` - Get statistics for a table
 
-**Example**:
-```
-list_catalogs()
-```
-
-### `list_schemas`
-List all schemas in a specific catalog.
-
-**Parameters**:
-- `catalog` (string, required): The catalog name
-
-**Example**:
-```
-list_schemas(catalog="hive")
-```
-
-### `list_tables`
-List all tables in a specific schema.
-
-**Parameters**:
-- `catalog` (string, required): The catalog name
-- `schema` (string, required): The schema name
-
-**Example**:
-```
-list_tables(catalog="hive", schema="default")
-```
-
-### `describe_table`
-Describe the structure of a table (columns, types, comments).
-
-**Parameters**:
-- `table` (string, required): The table name
-- `catalog` (string, optional): The catalog name
-- `schema` (string, optional): The schema name
-
-**Example**:
-```
-describe_table(table="my_table", catalog="hive", schema="default")
-```
-
-### `execute_query`
-Execute a SQL query and return the results in JSON format.
-
-**Parameters**:
-- `query` (string, required): The SQL query to execute
-
-**Example**:
-```
-execute_query(query="SELECT * FROM hive.default.my_table LIMIT 10")
-```
-
-### `show_create_table`
-Show the CREATE TABLE statement for a table.
-
-**Parameters**:
-- `table` (string, required): The table name
-- `catalog` (string, optional): The catalog name
-- `schema` (string, optional): The schema name
-
-**Example**:
-```
-show_create_table(table="my_table", catalog="hive", schema="default")
-```
-
-### `get_table_stats`
-Get statistics for a table.
-
-**Parameters**:
-- `table` (string, required): The table name
-- `catalog` (string, optional): The catalog name
-- `schema` (string, optional): The schema name
-
-**Example**:
-```
-get_table_stats(table="my_table", catalog="hive", schema="default")
+To generate the detailed tool documentation locally:
+```bash
+python3 scripts/generate_tool_docs.py
+# This creates TOOLS.md and tools.json with complete documentation
 ```
 
 ## OAuth Authentication
