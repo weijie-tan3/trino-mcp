@@ -2,7 +2,11 @@
 
 import logging
 import sys
-import sqlparse
+import sqlglot
+from sqlglot.expressions import (
+    Insert, Update, Delete, Merge, Create, Drop, Alter,
+    Grant, Revoke, Analyze, Refresh, Command, Describe
+)
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
@@ -33,50 +37,47 @@ mcp = FastMCP(
 def _is_read_only_query(query: str) -> bool:
     """Check if a SQL query is read-only using SQL parsing.
     
+    Uses sqlglot to parse the query as Trino SQL and walks the AST to detect
+    any write operations (INSERT, UPDATE, DELETE, etc.).
+    
     Args:
         query: The SQL query to check
         
     Returns:
         True if the query is read-only, False otherwise
     """
-    # Parse the SQL query
-    parsed = sqlparse.parse(query)
-    if not parsed:
+    # Trino write operations (sqlglot maps these to standard expression types)
+    WRITE_TYPES = (
+        Insert, Update, Delete, Merge,
+        Create, Drop, Alter,
+        Grant, Revoke, Analyze, Refresh
+    )
+    
+    try:
+        # Parse using the Trino dialect
+        expr = sqlglot.parse_one(query, read="trino")
+    except Exception:
+        # If parsing fails, treat as non-read-only for safety
         return False
-    
-    # Check the first statement
-    statement = parsed[0]
-    
-    # Get the first meaningful token (skip whitespace and comments)
-    first_token = None
-    for token in statement.tokens:
-        if token.ttype not in (sqlparse.tokens.Whitespace, sqlparse.tokens.Comment.Single, 
-                               sqlparse.tokens.Comment.Multiline):
-            first_token = token
-            break
-    
-    if not first_token:
-        return False
-    
-    # Check if it's a read-only statement type
-    # Read-only: SELECT, SHOW, DESCRIBE, EXPLAIN, WITH (for CTEs with SELECT)
-    # Write: INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, TRUNCATE, MERGE, GRANT, REVOKE, etc.
-    token_value = first_token.value.upper()
-    
-    read_only_keywords = {'SELECT', 'SHOW', 'DESCRIBE', 'DESC', 'EXPLAIN', 'WITH'}
-    write_keywords = {'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 
-                      'TRUNCATE', 'MERGE', 'REPLACE', 'GRANT', 'REVOKE', 'CALL'}
-    
-    # Check for write operations
-    if any(token_value.startswith(keyword) for keyword in write_keywords):
-        return False
-    
-    # Check for read-only operations
-    if any(token_value.startswith(keyword) for keyword in read_only_keywords):
+
+    # Describe is read-only
+    if isinstance(expr, Describe):
         return True
     
-    # Default to not read-only for safety
-    return False
+    # Check if it's a Command statement (SHOW, EXPLAIN, etc.)
+    # These are read-only commands but parsed as Command type
+    if isinstance(expr, Command):
+        # Commands like SHOW, EXPLAIN are read-only
+        # Extract the command text to check
+        query_upper = query.strip().upper()
+        read_only_commands = ['SHOW', 'EXPLAIN']
+        if any(query_upper.startswith(cmd) for cmd in read_only_commands):
+            return True
+        # Other commands are considered write operations for safety
+        return False
+    
+    # Walk the AST for any write operation
+    return not any(isinstance(node, WRITE_TYPES) for node in expr.walk())
 
 
 def _try_execute_query(query: str) -> str:

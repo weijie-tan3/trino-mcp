@@ -175,10 +175,10 @@ def test_execute_query_read_only_allows_describe(mock_client):
 
     mock_client.execute_query.return_value = '[{"column": "id"}]'
 
-    result = execute_query_read_only("DESCRIBE table")
+    result = execute_query_read_only("DESCRIBE my_table")
 
     assert "id" in result
-    mock_client.execute_query.assert_called_once_with("DESCRIBE table")
+    mock_client.execute_query.assert_called_once_with("DESCRIBE my_table")
 
 
 @patch("trino_mcp.server.client")

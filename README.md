@@ -218,8 +218,8 @@ Execute a read-only SQL query and return the results in JSON format.
 - `query` (string, required): The SQL query to execute
 
 **Note**: This tool is designed for read-only queries (SELECT, SHOW, DESCRIBE, EXPLAIN, etc.). 
-It validates queries using SQL parsing to ensure they are read-only before execution. 
-Write operations (INSERT, UPDATE, DELETE, CREATE, DROP, etc.) will be rejected. This tool is always available.
+It validates queries using AST-based SQL parsing (sqlglot with Trino dialect) to ensure they are read-only before execution. 
+Write operations (INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, TRUNCATE, MERGE, etc.) will be rejected, including when they appear within WITH clauses or subqueries. This tool is always available.
 
 **Example**:
 ```
