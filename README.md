@@ -2,6 +2,16 @@
 
 A simple Model Context Protocol (MCP) server for Trino query engine with OAuth support (without explicit JWT tokens).
 
+## 📖 Documentation
+
+**[View Full Documentation](https://weijie-tan3.github.io/trino-mcp/)**
+
+- [Installation Guide](https://weijie-tan3.github.io/trino-mcp/installation/)
+- [Configuration](https://weijie-tan3.github.io/trino-mcp/configuration/)
+- [Quick Start](https://weijie-tan3.github.io/trino-mcp/quickstart/)
+- [Available Tools](https://weijie-tan3.github.io/trino-mcp/tools/)
+- [API Reference](https://weijie-tan3.github.io/trino-mcp/api/)
+
 ## Features
 
 - **Core Trino Operations**: Query catalogs, schemas, tables, and execute SQL

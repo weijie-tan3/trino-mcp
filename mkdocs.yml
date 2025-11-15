@@ -1,0 +1,76 @@
+site_name: Trino MCP Server
+site_description: A Model Context Protocol (MCP) server for Trino query engine with OAuth support
+site_author: Trino MCP Contributors
+site_url: https://weijie-tan3.github.io/trino-mcp/
+
+repo_name: weijie-tan3/trino-mcp
+repo_url: https://github.com/weijie-tan3/trino-mcp
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.annotation
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: installation.md
+    - Configuration: configuration.md
+    - Quick Start: quickstart.md
+  - Usage:
+    - Available Tools: tools.md
+    - Authentication: authentication.md
+    - Examples: examples.md
+  - API Reference: api.md
+  - Contributing: contributing.md
+  - License: license.md
+
+plugins:
+  - search
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+  - def_list
+  - tables
+  - footnotes
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/weijie-tan3/trino-mcp
