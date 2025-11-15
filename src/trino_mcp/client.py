@@ -6,6 +6,7 @@ from typing import List
 import trino
 from trino.dbapi import Connection, Cursor
 
+from . import __version__
 from .config import TrinoConfig
 
 
@@ -30,10 +31,23 @@ class TrinoClient:
             **(self.config.additional_kwargs or {}),
         )
 
+    def _add_watermark(self, query: str) -> str:
+        """Add watermark comment to the query.
+
+        Args:
+            query: The SQL query to add watermark to
+
+        Returns:
+            The query with watermark comment prepended
+        """
+        watermark = f"-- {self.config.user}, trino-mcp v{__version__} --\n"
+        return watermark + query
+
     def execute_query(self, query: str) -> str:
         """Execute a SQL query and return results as JSON string."""
         cursor: Cursor = self.connection.cursor()
-        cursor.execute(query)
+        watermarked_query = self._add_watermark(query)
+        cursor.execute(watermarked_query)
 
         if cursor.description:
             # Query returned results
