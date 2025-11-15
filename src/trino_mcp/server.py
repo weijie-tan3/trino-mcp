@@ -3,8 +3,6 @@
 import logging
 import sys
 import sqlparse
-from sqlparse.sql import Statement
-from sqlparse.tokens import Keyword, DML
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
