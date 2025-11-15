@@ -2,26 +2,10 @@
 
 A simple Model Context Protocol (MCP) server for Trino query engine with OAuth support (without explicit JWT tokens).
 
-## Features
+## Quick Start (TLDR)
 
-- **Core Trino Operations**: Query catalogs, schemas, tables, and execute SQL
-- **OAuth Support**: Built-in OAuth2 authentication without requiring explicit JWT tokens
-- **Basic Authentication**: Also supports username/password authentication
-- **Simple & Focused**: Core Trino features without over-complication
-- **uvx Compatible**: Run directly with `uvx` without installation
+**Using with VS Code?** Add to `.vscode/mcp.json`:
 
-## Prerequisites
-
-- Python 3.10 or higher
-- A running Trino server
-- (Optional) Trino credentials for authentication
-
-## Installation
-
-### Option 0: VS Code
-Add to `.vscode/mcp.json`:
-
-**After publishing to PyPI:**
 ```json
 {
   "servers": {
@@ -38,73 +22,41 @@ Add to `.vscode/mcp.json`:
 }
 ```
 
-### Option 1: Run with uvx
-
+**Want to run standalone?**
 ```bash
+# Set your Trino connection
+export TRINO_HOST=localhost
+export TRINO_PORT=8080
+export TRINO_USER=trino
+
+# Run directly (no installation needed)
 uvx trino-mcp
 ```
 
-For development or local usage:
+That's it! The server will connect to your Trino cluster and provide query capabilities.
 
-```bash
-# Run directly from the repository
-uvx --from . trino-mcp
-```
+---
 
-### Option 2: Install with uv
+## Features
 
-```bash
-# From PyPI (once published)
-uv pip install trino-mcp
+- **Core Trino Operations**: Query catalogs, schemas, tables, and execute SQL
+- **OAuth Support**: Built-in OAuth2 authentication without requiring explicit JWT tokens
+- **Basic Authentication**: Also supports username/password authentication
+- **Simple & Focused**: Core Trino features without over-complication
+- **uvx Compatible**: Run directly with `uvx` without installation
 
-# From local directory
-uv pip install .
+## Prerequisites
 
-# Run the server
-trino-mcp
-```
+- Python 3.10 or higher
+- A running Trino server
+- (Optional) Trino credentials for authentication
 
-### Option 3: Development Installation
+## Setup & Configuration
 
-```bash
-# Install in editable mode
-uv pip install -e .
-
-# Run the server
-python -m trino_mcp.server
-```
-
-## Configuration
-
-Create a `.env` file in your working directory or set environment variables:
-
-```bash
-# Basic Configuration
-TRINO_HOST=localhost
-TRINO_PORT=8080
-TRINO_USER=trino
-TRINO_HTTP_SCHEME=http
-
-# Optional: Default catalog and schema
-TRINO_CATALOG=my_catalog
-TRINO_SCHEMA=my_schema
-
-# Authentication Options (choose one):
-
-# Option 1: Basic Authentication
-TRINO_PASSWORD=your_password
-
-# Option 2: OAuth2 Authentication (without explicit JWT)
-TRINO_OAUTH_TOKEN=your_oauth_token
-```
-
-## Usage
-
-### With Claude Desktop
+### Using with Claude Desktop
 
 Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
 
-**After publishing to PyPI:**
 ```json
 {
   "mcpServers": {
@@ -138,7 +90,24 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 }
 ```
 
-### With VS Code
+### Using with VS Code
+
+Add to `.vscode/mcp.json`:
+```json
+{
+  "servers": {
+    "trino": {
+      "command": "uvx",
+      "args": ["trino-mcp"],
+      "env": {
+        "TRINO_HOST": "${trino_host_address}",
+        "TRINO_USER": "${env:USER}",
+        "AUTH_METHOD": "OAuth2"
+      }
+    }
+  }
+}
+```
 
 **For local development:**
 ```json
@@ -155,6 +124,65 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
     }
   }
 }
+```
+
+### Standalone Usage
+
+You can also run the server standalone without an MCP client:
+
+```bash
+# Run directly with uvx (no installation needed)
+uvx trino-mcp
+
+# Or run from local repository
+uvx --from . trino-mcp
+```
+
+### Environment Variables
+
+Configure the server using environment variables or a `.env` file:
+
+```bash
+# Required
+TRINO_HOST=localhost              # Your Trino server hostname
+TRINO_PORT=8080                   # Trino server port
+TRINO_USER=trino                  # Username for authentication
+TRINO_HTTP_SCHEME=http            # http or https
+
+# Optional
+TRINO_CATALOG=my_catalog          # Default catalog
+TRINO_SCHEMA=my_schema            # Default schema
+
+# Authentication (choose one):
+TRINO_PASSWORD=your_password      # For basic authentication
+TRINO_OAUTH_TOKEN=your_token      # For OAuth2 authentication
+```
+
+## Installation Options
+
+If you prefer to install the package instead of using `uvx`:
+
+### Option 1: Install with uv
+
+```bash
+# From PyPI (once published)
+uv pip install trino-mcp
+
+# From local directory
+uv pip install .
+
+# Run the server
+trino-mcp
+```
+
+### Option 2: Development Installation
+
+```bash
+# Install in editable mode
+uv pip install -e .
+
+# Run the server
+python -m trino_mcp.server
 ```
 
 ## Available Tools
@@ -252,14 +280,6 @@ This server is designed to work with Trino's OAuth2 authentication mechanism. Th
 2. **Client Connection**: The Trino Python client handles the OAuth2 flow automatically
 3. **Token Management**: Tokens are managed by the client library - no manual JWT handling required
 
-### OAuth Setup
-
-To use OAuth2 authentication with your Trino cluster:
-
-1. Configure Trino with OAuth2 (see [Trino OAuth2 docs](https://trino.io/docs/current/security/oauth2.html))
-2. The authentication flow will be handled automatically by the Trino client
-3. No explicit JWT token configuration needed - the client manages tokens transparently
-
 For basic username/password authentication, simply set `TRINO_PASSWORD` in your environment.
 
 **Note**: OAuth2 support in the Trino Python client requires implementing a redirect handler. This server provides the foundation for OAuth2 integration. For production use with OAuth2, you may need to extend the configuration to implement your specific OAuth2 flow based on your identity provider.
@@ -295,36 +315,6 @@ black src/
 mypy src/
 ```
 
-### Publishing to PyPI
-
-To publish the package to PyPI (requires PyPI credentials):
-
-```bash
-# Build the package
-uv build
-
-# Publish to PyPI (using twine or uv publish)
-# First, ensure you have credentials configured
-uv publish
-
-# Or use twine
-python -m pip install twine
-python -m twine upload dist/*
-```
-
-Once published to PyPI, users can install the package directly:
-
-```bash
-# Using uvx (no installation required)
-uvx trino-mcp
-
-# Using uv
-uv pip install trino-mcp
-
-# Using pip
-pip install trino-mcp
-```
-
 ## License
 
 MIT License - see LICENSE file for details.
@@ -333,7 +323,6 @@ MIT License - see LICENSE file for details.
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## Support
 
 For issues and questions:
 - Open an issue on GitHub
