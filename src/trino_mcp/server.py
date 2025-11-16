@@ -94,7 +94,7 @@ def _try_execute_query(query: str) -> str:
     """
     try:
         result = client.execute_query(query)
-        logger.debug(f"Query executed successfully")
+        logger.debug("Query executed successfully")
         return result
     except Exception as e:
         logger.error(f"Error executing query: {str(e)}", exc_info=True)
