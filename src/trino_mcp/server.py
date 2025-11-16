@@ -69,13 +69,20 @@ def _is_read_only_query(query: str) -> bool:
         return True
     
     # Check if it's a Command statement (SHOW, EXPLAIN, etc.)
-    # These are read-only commands but parsed as Command type
+    # Use the parsed command type for precise matching
     if isinstance(expr, Command):
-        # Commands like SHOW, EXPLAIN are read-only
-        # Extract the command text to check
-        query_upper = query.strip().upper()
-        read_only_commands = ['SHOW', 'EXPLAIN']
-        if any(query_upper.startswith(cmd) for cmd in read_only_commands):
+        # Only allow specific read-only commands
+        # EXPLAIN ANALYZE is NOT read-only (it executes the query)
+        allowed_commands = {"SHOW", "EXPLAIN"}
+        command_name = (getattr(expr, "command", None) or "").upper()
+        # Disallow EXPLAIN ANALYZE (which is a Command with command='EXPLAIN' and 'ANALYZE' as a keyword/option)
+        # If the command is EXPLAIN, check for 'ANALYZE' in its tokens/args
+        if command_name == "EXPLAIN":
+            # If 'ANALYZE' appears in the expression's text, disallow
+            if "ANALYZE" in query.upper():
+                return False
+            return True
+        if command_name in allowed_commands:
             return True
         # Other commands are considered write operations for safety
         return False
