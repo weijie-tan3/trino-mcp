@@ -36,13 +36,16 @@ mcp = FastMCP(
 
 def _is_read_only_query(query: str) -> bool:
     """Check if a SQL query is read-only using SQL parsing.
-    
+
     Uses sqlglot to parse the query as Trino SQL and walks the AST to detect
     any write operations (INSERT, UPDATE, DELETE, etc.).
-    
+
+    Note: SELECT statements with functions that have side effects are not detected
+    and will be allowed. Users should be aware that SELECT can potentially trigger
+    external writes depending on the Trino connectors and functions used.
+
     Args:
         query: The SQL query to check
-        
     Returns:
         True if the query is read-only, False otherwise
     """
