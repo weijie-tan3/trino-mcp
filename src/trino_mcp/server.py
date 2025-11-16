@@ -59,8 +59,9 @@ def _is_read_only_query(query: str) -> bool:
     try:
         # Parse using the Trino dialect
         expr = sqlglot.parse_one(query, read="trino")
-    except Exception:
+    except Exception as e:
         # If parsing fails, treat as non-read-only for safety
+        logger.warning(f"Failed to parse query as Trino SQL: {str(e)}")
         return False
 
     # Describe is read-only
