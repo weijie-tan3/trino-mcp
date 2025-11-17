@@ -5,7 +5,7 @@ import sys
 import sqlglot
 from sqlglot.expressions import (
     Insert, Update, Delete, Merge, Create, Drop, Alter,
-    Grant, Revoke, Analyze, Refresh, Command, Describe
+    Grant, Revoke, Analyze, Refresh, Command, Describe, TruncateTable
 )
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
@@ -52,7 +52,7 @@ def _is_read_only_query(query: str) -> bool:
     # Trino write operations (sqlglot maps these to standard expression types)
     WRITE_TYPES = (
         Insert, Update, Delete, Merge,
-        Create, Drop, Alter,
+        Create, Drop, Alter, TruncateTable,
         Grant, Revoke, Analyze, Refresh
     )
     
@@ -69,21 +69,21 @@ def _is_read_only_query(query: str) -> bool:
         return True
     
     # Check if it's a Command statement (SHOW, EXPLAIN, etc.)
-    # Use the parsed command type for precise matching
+    # These are read-only commands but parsed as Command type
     if isinstance(expr, Command):
-        # Only allow specific read-only commands
-        # EXPLAIN ANALYZE is NOT read-only (it executes the query)
-        allowed_commands = {"SHOW", "EXPLAIN"}
-        command_name = (getattr(expr, "command", None) or "").upper()
-        # Disallow EXPLAIN ANALYZE (which is a Command with command='EXPLAIN' and 'ANALYZE' as a keyword/option)
-        # If the command is EXPLAIN, check for 'ANALYZE' in its tokens/args
-        if command_name == "EXPLAIN":
-            # If 'ANALYZE' appears in the expression's text, disallow
-            if "ANALYZE" in query.upper():
-                return False
+        # Extract the command text to check
+        query_upper = query.strip().upper()
+        
+        # EXPLAIN ANALYZE executes the query, so it's NOT read-only
+        if query_upper.startswith('EXPLAIN') and 'ANALYZE' in query_upper:
+            return False
+        
+        # SHOW and EXPLAIN (without ANALYZE) are read-only
+        # Use exact word matching to avoid false positives like "SHOWING"
+        query_words = query_upper.split()
+        if query_words and query_words[0] in ('SHOW', 'EXPLAIN'):
             return True
-        if command_name in allowed_commands:
-            return True
+        
         # Other commands are considered write operations for safety
         return False
     
