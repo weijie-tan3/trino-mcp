@@ -20,6 +20,7 @@ class TrinoConfig:
     http_scheme: str = "http"
     auth: Optional[trino.auth.Authentication] = None
     additional_kwargs: Optional[dict] = None
+    allow_write_queries: bool = False
 
 
 def load_config() -> TrinoConfig:
@@ -59,6 +60,13 @@ def load_config() -> TrinoConfig:
     else:
         raise ValueError(f"Unsupported AUTH_METHOD: {auth_method}")
 
+    # Query execution permissions
+    allow_write_queries = os.getenv("ALLOW_WRITE_QUERIES", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+
     return TrinoConfig(
         host=host,
         port=port,
@@ -68,4 +76,5 @@ def load_config() -> TrinoConfig:
         http_scheme=http_scheme,
         auth=auth,
         additional_kwargs=additional_kwargs,
+        allow_write_queries=allow_write_queries,
     )

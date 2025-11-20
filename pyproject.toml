@@ -1,6 +1,6 @@
 [project]
 name = "trino-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "A simple Model Context Protocol (MCP) server for Trino with OAuth support"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -24,6 +24,7 @@ dependencies = [
     "mcp>=1.6.0",
     "trino>=0.333.0",
     "python-dotenv>=1.0.0",
+    "sqlglot>=27.0.0",
 ]
 
 [project.urls]

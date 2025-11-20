@@ -21,8 +21,8 @@ def test_extract_tools_from_ast():
     server_file = Path(__file__).parent.parent / "src" / "trino_mcp" / "server.py"
     tools = extract_tools_from_ast(server_file)
     
-    # Should extract all 7 tools
-    assert len(tools) == 7, f"Expected 7 tools, got {len(tools)}"
+    # Should extract all 8 tools
+    assert len(tools) == 8, f"Expected 8 tools, got {len(tools)}"
     
     # Check tool names
     tool_names = [tool['name'] for tool in tools]
@@ -31,6 +31,7 @@ def test_extract_tools_from_ast():
         'list_schemas',
         'list_tables',
         'describe_table',
+        'execute_query_read_only',
         'execute_query',
         'show_create_table',
         'get_table_stats'
@@ -168,7 +169,7 @@ def test_generated_files_exist():
     with open(tools_json, 'r') as f:
         data = json.load(f)
         assert isinstance(data, list)
-        assert len(data) == 7  # Should have 7 tools
+        assert len(data) == 8  # Should have 8 tools
 
 
 def test_json_structure():

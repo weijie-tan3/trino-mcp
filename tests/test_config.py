@@ -124,3 +124,104 @@ def test_load_config_defaults(mock_load_dotenv):
     assert config.http_scheme == "http"
     assert config.catalog is None
     assert config.schema is None
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "ALLOW_WRITE_QUERIES": "false",
+    },
+)
+def test_load_config_write_queries_false():
+    """Test loading configuration with write queries disabled."""
+    config = load_config()
+
+    assert config.allow_write_queries is False
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "ALLOW_WRITE_QUERIES": "true",
+    },
+)
+def test_load_config_write_queries_true():
+    """Test loading configuration with write queries enabled."""
+    config = load_config()
+
+    assert config.allow_write_queries is True
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "ALLOW_WRITE_QUERIES": "1",
+    },
+)
+def test_load_config_write_queries_one():
+    """Test loading configuration with write queries enabled using '1'."""
+    config = load_config()
+
+    assert config.allow_write_queries is True
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "ALLOW_WRITE_QUERIES": "yes",
+    },
+)
+def test_load_config_write_queries_yes():
+    """Test loading configuration with write queries enabled using 'yes'."""
+    config = load_config()
+
+    assert config.allow_write_queries is True
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "ALLOW_WRITE_QUERIES": "FALSE",
+    },
+)
+def test_load_config_write_queries_false_uppercase():
+    """Test loading configuration with write queries disabled using uppercase."""
+    config = load_config()
+
+    assert config.allow_write_queries is False
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+    },
+)
+def test_load_config_write_queries_default():
+    """Test default value for write queries when not specified."""
+    config = load_config()
+
+    assert config.allow_write_queries is False
