@@ -52,6 +52,7 @@ That's it! The server will connect to your Trino cluster and provide query capab
 - **Simple & Focused**: Core Trino features without over-complication
 - **uvx Compatible**: Run directly with `uvx` without installation
 - **Write Protection**: Separate tools (`execute_query` and `execute_query_read_only`) with `ALLOW_WRITE_QUERIES` configuration to prevent accidental database modifications
+- **Query Watermarking**: Automatically adds watermark comments to queries for tracking and auditing (includes username and version)
 
 ## Prerequisites
 
