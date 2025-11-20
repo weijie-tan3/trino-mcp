@@ -98,12 +98,28 @@ def test_execute_query_read_only_tool(mock_client):
     mock_client.execute_query.assert_called_once_with("SELECT 1")
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "INSERT INTO table VALUES (1)",
+        "UPDATE table SET col=1",
+        "DELETE FROM table",
+        "CREATE TABLE test (id INT)",
+        "DROP TABLE test",
+        "ALTER TABLE test ADD COLUMN name VARCHAR",
+        "TRUNCATE TABLE test",
+        "MERGE INTO table1 USING table2 ON table1.id = table2.id",
+        "WITH cte AS (DELETE FROM table RETURNING *) SELECT * FROM cte"
+    ],
+)
 @patch("trino_mcp.server.client")
-def test_execute_query_read_only_blocks_insert(mock_client):
-    """Test execute_query_read_only tool blocks INSERT queries."""
-    from trino_mcp.server import execute_query_read_only
+def test_execute_query_read_only_blocks_write_queries(mock_client, query):
+    """Test execute_query_read_only tool blocks non-read-only queries."""
+    from trino_mcp.server import execute_query_read_only, _is_read_only_query
 
-    result = execute_query_read_only("INSERT INTO table VALUES (1)")
+    assert not _is_read_only_query(query)
+
+    result = execute_query_read_only(query)
 
     assert "does not appear to be read-only" in result
     assert "execute_query" in result
@@ -111,87 +127,29 @@ def test_execute_query_read_only_blocks_insert(mock_client):
     mock_client.execute_query.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "query,expected_content",
+    [
+        ("SHOW TABLES", "table"),
+        ("DESCRIBE my_table", "column"),
+        ("EXPLAIN SELECT * FROM table", "plan"),
+        ("SHOW SCHEMAS", "schema"),
+        ("SHOW CATALOGS", "catalog"),
+    ],
+)
 @patch("trino_mcp.server.client")
-def test_execute_query_read_only_blocks_update(mock_client):
-    """Test execute_query_read_only tool blocks UPDATE queries."""
-    from trino_mcp.server import execute_query_read_only
+def test_execute_query_read_only_allows_read_queries(mock_client, query, expected_content):
+    """Test execute_query_read_only tool allows read-only queries."""
+    from trino_mcp.server import execute_query_read_only, _is_read_only_query
 
-    result = execute_query_read_only("UPDATE table SET col=1")
+    assert _is_read_only_query(query)
 
-    assert "does not appear to be read-only" in result
-    mock_client.execute_query.assert_not_called()
+    mock_client.execute_query.return_value = f'[{{"{expected_content}": "test"}}]'
 
-
-@patch("trino_mcp.server.client")
-def test_execute_query_read_only_blocks_delete(mock_client):
-    """Test execute_query_read_only tool blocks DELETE queries."""
-    from trino_mcp.server import execute_query_read_only
-
-    result = execute_query_read_only("DELETE FROM table")
-
-    assert "does not appear to be read-only" in result
-    mock_client.execute_query.assert_not_called()
-
-
-@patch("trino_mcp.server.client")
-def test_execute_query_read_only_blocks_create(mock_client):
-    """Test execute_query_read_only tool blocks CREATE queries."""
-    from trino_mcp.server import execute_query_read_only
-
-    result = execute_query_read_only("CREATE TABLE test (id INT)")
-
-    assert "does not appear to be read-only" in result
-    mock_client.execute_query.assert_not_called()
-
-
-@patch("trino_mcp.server.client")
-def test_execute_query_read_only_blocks_drop(mock_client):
-    """Test execute_query_read_only tool blocks DROP queries."""
-    from trino_mcp.server import execute_query_read_only
-
-    result = execute_query_read_only("DROP TABLE test")
-
-    assert "does not appear to be read-only" in result
-    mock_client.execute_query.assert_not_called()
-
-
-@patch("trino_mcp.server.client")
-def test_execute_query_read_only_allows_show(mock_client):
-    """Test execute_query_read_only tool allows SHOW queries."""
-    from trino_mcp.server import execute_query_read_only
-
-    mock_client.execute_query.return_value = '[{"table": "test"}]'
-
-    result = execute_query_read_only("SHOW TABLES")
+    result = execute_query_read_only(query)
 
     assert "test" in result
-    mock_client.execute_query.assert_called_once_with("SHOW TABLES")
-
-
-@patch("trino_mcp.server.client")
-def test_execute_query_read_only_allows_describe(mock_client):
-    """Test execute_query_read_only tool allows DESCRIBE queries."""
-    from trino_mcp.server import execute_query_read_only
-
-    mock_client.execute_query.return_value = '[{"column": "id"}]'
-
-    result = execute_query_read_only("DESCRIBE my_table")
-
-    assert "id" in result
-    mock_client.execute_query.assert_called_once_with("DESCRIBE my_table")
-
-
-@patch("trino_mcp.server.client")
-def test_execute_query_read_only_allows_explain(mock_client):
-    """Test execute_query_read_only tool allows EXPLAIN queries."""
-    from trino_mcp.server import execute_query_read_only
-
-    mock_client.execute_query.return_value = '[{"plan": "..."}]'
-
-    result = execute_query_read_only("EXPLAIN SELECT * FROM table")
-
-    assert "plan" in result
-    mock_client.execute_query.assert_called_once()
+    mock_client.execute_query.assert_called_once_with(query)
 
 
 @patch("trino_mcp.server.client")
