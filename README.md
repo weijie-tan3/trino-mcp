@@ -22,6 +22,7 @@ A simple Model Context Protocol (MCP) server for Trino query engine with OAuth s
         "TRINO_HOST": "${trino_host_address}",
         "TRINO_USER": "${env:USER}",
         "AUTH_METHOD": "OAuth2"
+        // "ALLOW_WRITE_QUERIES": "true"  // Enable write operations (disabled by default)
       }
     }
   }
@@ -50,6 +51,7 @@ That's it! The server will connect to your Trino cluster and provide query capab
 - **Basic Authentication**: Also supports username/password authentication
 - **Simple & Focused**: Core Trino features without over-complication
 - **uvx Compatible**: Run directly with `uvx` without installation
+- **Write Protection**: Separate tools (`execute_query` and `execute_query_read_only`) with `ALLOW_WRITE_QUERIES` configuration to prevent accidental database modifications
 
 ## Prerequisites
 
@@ -86,6 +88,7 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
         "TRINO_HOST": "localhost",
         "TRINO_PORT": "8080",
         "TRINO_USER": "trino"
+        // "ALLOW_WRITE_QUERIES": "true"  // Enable write operations if needed
       }
     }
   }
@@ -104,6 +107,7 @@ Add to `.vscode/mcp.json`:
         "TRINO_HOST": "${trino_host_address}",
         "TRINO_USER": "${env:USER}",
         "AUTH_METHOD": "OAuth2"
+        // "ALLOW_WRITE_QUERIES": "true"  // Enable write operations if needed
       }
     }
   }
@@ -128,6 +132,10 @@ TRINO_SCHEMA=my_schema            # Default schema
 # Authentication (choose one):
 TRINO_PASSWORD=your_password      # For basic authentication
 TRINO_OAUTH_TOKEN=your_token      # For OAuth2 authentication
+
+# Security
+ALLOW_WRITE_QUERIES=true          # Enable write operations (INSERT, UPDATE, DELETE, etc.)
+                                  # Disabled by default for safety
 ```
 
 ## Available Tools
@@ -139,7 +147,8 @@ The Trino MCP server provides the following tools. For the most up-to-date docum
 - `list_schemas` - List all schemas in a catalog
 - `list_tables` - List all tables in a schema
 - `describe_table` - Describe the structure of a table
-- `execute_query` - Execute a SQL query and return results
+- `execute_query_read_only` - Execute read-only SQL queries (SELECT, SHOW, DESCRIBE, EXPLAIN)
+- `execute_query` - Execute any SQL query (requires `ALLOW_WRITE_QUERIES=true` for write operations)
 - `show_create_table` - Show the CREATE TABLE statement for a table
 - `get_table_stats` - Get statistics for a table
 
