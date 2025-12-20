@@ -69,6 +69,38 @@ def test_execute_query_without_results(config, mock_connection):
     assert "executed successfully" in data["message"]
 
 
+def test_execute_query_raw_with_results(config, mock_connection):
+    """Test execute_query_raw returns native Python data structures with results."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("col1",), ("col2",)]
+    mock_cursor.fetchall.return_value = [("val1", "val2"), ("val3", "val4")]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    result = client.execute_query_raw("SELECT * FROM test")
+
+    # Should return a list of dictionaries, not a JSON string
+    assert isinstance(result, list)
+    assert len(result) == 2
+    assert result[0] == {"col1": "val1", "col2": "val2"}
+    assert result[1] == {"col1": "val3", "col2": "val4"}
+
+
+def test_execute_query_raw_without_results(config, mock_connection):
+    """Test execute_query_raw returns native Python data structures without results."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = None
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    result = client.execute_query_raw("CREATE TABLE test (id INT)")
+
+    # Should return a dictionary, not a JSON string
+    assert isinstance(result, dict)
+    assert result["status"] == "success"
+    assert "executed successfully" in result["message"]
+
+
 def test_list_catalogs(config, mock_connection):
     """Test listing catalogs."""
     mock_cursor = MagicMock()

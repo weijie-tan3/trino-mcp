@@ -19,21 +19,36 @@ try:
 except Exception as e:
     print(f"Error: {e}")
 
-# Example 2: Execute a query
+# Example 2: Execute a query with execute_query (returns JSON string)
 print("\n" + "=" * 60)
-print("Example 2: Executing a query")
+print("Example 2: Executing a query with execute_query (JSON string)")
 print("=" * 60)
 
 try:
     result = client.execute_query("SELECT 1 as test_column")
-    print(f"Query result:\n{result}")
+    print(f"Query result (JSON string):\n{result}")
+    print(f"Type: {type(result)}")
 except Exception as e:
     print(f"Error: {e}")
 
-# Example 3: List schemas (if catalog is configured)
+# Example 3: Execute a query with execute_query_raw (returns Python data structures)
+print("\n" + "=" * 60)
+print("Example 3: Executing a query with execute_query_raw (native Python)")
+print("=" * 60)
+
+try:
+    result = client.execute_query_raw("SELECT 1 as test_column, 2 as another_column")
+    print(f"Query result (Python list):\n{result}")
+    print(f"Type: {type(result)}")
+    print(f"First row: {result[0]}")
+    print(f"Accessing column: test_column = {result[0]['test_column']}")
+except Exception as e:
+    print(f"Error: {e}")
+
+# Example 4: List schemas (if catalog is configured)
 if config.catalog:
     print("\n" + "=" * 60)
-    print(f"Example 3: Listing schemas in catalog '{config.catalog}'")
+    print(f"Example 4: Listing schemas in catalog '{config.catalog}'")
     print("=" * 60)
 
     try:
@@ -45,3 +60,5 @@ if config.catalog:
 print("\n" + "=" * 60)
 print("Examples completed!")
 print("=" * 60)
+print("\nNote: Use execute_query_raw() for library usage to get native Python data structures.")
+print("      Use execute_query() when you need JSON strings (e.g., for MCP server).")
