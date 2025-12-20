@@ -292,3 +292,51 @@ def test_watermark_with_different_username(mock_connection):
     # Verify the watermark includes the correct username
     expected_query = f"-- custom_user, trino-mcp v{__version__} --\nSELECT 1"
     mock_cursor.execute.assert_called_with(expected_query)
+
+
+def test_list_catalogs_with_unexpected_response(config, mock_connection):
+    """Test that list_catalogs raises error for unexpected response."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = None  # No results
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+
+    with pytest.raises(RuntimeError, match="Unexpected response from SHOW CATALOGS"):
+        client.list_catalogs()
+
+
+def test_list_schemas_with_unexpected_response(config, mock_connection):
+    """Test that list_schemas raises error for unexpected response."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = None  # No results
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+
+    with pytest.raises(RuntimeError, match="Unexpected response from SHOW SCHEMAS"):
+        client.list_schemas("test_catalog")
+
+
+def test_list_tables_with_unexpected_response(config, mock_connection):
+    """Test that list_tables raises error for unexpected response."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = None  # No results
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+
+    with pytest.raises(RuntimeError, match="Unexpected response from SHOW TABLES"):
+        client.list_tables("catalog1", "schema1")
+
+
+def test_show_create_table_with_unexpected_response(config, mock_connection):
+    """Test that show_create_table raises error for unexpected response."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = None  # No results
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+
+    with pytest.raises(RuntimeError, match="Unexpected response from SHOW CREATE TABLE"):
+        client.show_create_table("catalog1", "schema1", "table1")

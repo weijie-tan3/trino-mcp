@@ -1,7 +1,7 @@
 """Trino client for executing queries."""
 
 import json
-from typing import Dict, List, Union
+from typing import Any, Dict, List, Union
 
 import trino
 from trino.dbapi import Connection, Cursor
@@ -43,7 +43,7 @@ class TrinoClient:
         watermark = f"-- {self.config.user}, trino-mcp v{__version__} --\n"
         return watermark + query
 
-    def execute_query_raw(self, query: str) -> Union[List[Dict], Dict[str, str]]:
+    def execute_query_raw(self, query: str) -> Union[List[Dict[str, Any]], Dict[str, str]]:
         """Execute a SQL query and return results as Python data structures.
         
         This method returns native Python data structures instead of JSON strings,
@@ -81,6 +81,9 @@ class TrinoClient:
     def list_catalogs(self) -> List[str]:
         """List all available catalogs."""
         data = self.execute_query_raw("SHOW CATALOGS")
+        if isinstance(data, dict):
+            # Query didn't return results (unexpected for SHOW CATALOGS)
+            raise RuntimeError(f"Unexpected response from SHOW CATALOGS: {data}")
         return [row["Catalog"] for row in data]
 
     def list_schemas(self, catalog: str) -> List[str]:
@@ -90,6 +93,9 @@ class TrinoClient:
             raise ValueError("Catalog must be specified")
 
         data = self.execute_query_raw(f"SHOW SCHEMAS FROM {catalog_name}")
+        if isinstance(data, dict):
+            # Query didn't return results (unexpected for SHOW SCHEMAS)
+            raise RuntimeError(f"Unexpected response from SHOW SCHEMAS: {data}")
         return [row["Schema"] for row in data]
 
     def list_tables(self, catalog: str, schema: str) -> List[str]:
@@ -101,6 +107,9 @@ class TrinoClient:
             raise ValueError("Both catalog and schema must be specified")
 
         data = self.execute_query_raw(f"SHOW TABLES FROM {catalog_name}.{schema_name}")
+        if isinstance(data, dict):
+            # Query didn't return results (unexpected for SHOW TABLES)
+            raise RuntimeError(f"Unexpected response from SHOW TABLES: {data}")
         return [row["Table"] for row in data]
 
     def describe_table(self, catalog: str, schema: str, table: str) -> str:
@@ -124,6 +133,9 @@ class TrinoClient:
         data = self.execute_query_raw(
             f"SHOW CREATE TABLE {catalog_name}.{schema_name}.{table}"
         )
+        if isinstance(data, dict):
+            # Query didn't return results (unexpected for SHOW CREATE TABLE)
+            raise RuntimeError(f"Unexpected response from SHOW CREATE TABLE: {data}")
         return data[0]["Create Table"] if data else ""
 
     def get_table_stats(self, catalog: str, schema: str, table: str) -> str:
