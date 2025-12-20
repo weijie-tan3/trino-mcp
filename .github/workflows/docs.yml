@@ -30,18 +30,19 @@ jobs:
       with:
         enable-cache: true
     
-    - name: Install dependencies
+    - name: Install package and documentation dependencies
       run: |
         uv sync --group docs
+        uv pip install -e .
     
-    - name: Build documentation
+    - name: Build documentation with Sphinx
       run: |
-        uv run mkdocs build --strict
+        uv run sphinx-build -b html docs docs/_build/html -W --keep-going
     
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
       with:
-        path: ./site
+        path: ./docs/_build/html
 
   deploy:
     environment:

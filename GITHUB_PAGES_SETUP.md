@@ -2,11 +2,18 @@
 
 This document explains how to enable GitHub Pages for the Trino MCP Server documentation.
 
+## Documentation Technology
+
+The documentation uses **Sphinx** with automatic API generation:
+- API reference is auto-generated from Python docstrings
+- Guides are manually written in reStructuredText (RST) format
+- Deployed via GitHub Actions to GitHub Pages
+
 ## Prerequisites
 
 This PR has added all the necessary files for documentation:
-- Documentation content in `docs/` directory
-- MkDocs configuration in `mkdocs.yml`
+- Documentation content in `docs/` directory (RST format)
+- Sphinx configuration in `docs/conf.py`
 - GitHub Actions workflow in `.github/workflows/docs.yml`
 
 ## Enabling GitHub Pages
@@ -60,16 +67,20 @@ To build and preview the documentation locally:
 
 ```bash
 # Install dependencies
-pip install mkdocs mkdocs-material
+pip install sphinx sphinx-rtd-theme sphinx-autodoc-typehints
 
-# Serve locally (with live reload)
-mkdocs serve
+# Install the package (required for autodoc)
+pip install -e .
 
-# Build static site
-mkdocs build
+# Build documentation
+sphinx-build -b html docs docs/_build/html
+
+# View locally
+cd docs/_build/html
+python -m http.server 8000
 ```
 
-Visit http://127.0.0.1:8000/trino-mcp/ to view the local documentation.
+Visit http://localhost:8000 to view the local documentation.
 
 ## Troubleshooting
 
@@ -91,8 +102,9 @@ Visit http://127.0.0.1:8000/trino-mcp/ to view the local documentation.
 ### Build Errors
 
 1. Check the workflow logs in the Actions tab
-2. Ensure all documentation files are valid Markdown
-3. Test the build locally with `mkdocs build --strict`
+2. Ensure all documentation files are valid RST
+3. Test the build locally with `sphinx-build -b html docs docs/_build/html -W --keep-going`
+4. Ensure the package can be imported (autodoc requirement)
 
 ## Custom Domain (Optional)
 
@@ -107,6 +119,6 @@ See [GitHub Pages documentation](https://docs.github.com/en/pages/configuring-a-
 ## Support
 
 If you encounter any issues:
-- Check the [MkDocs documentation](https://www.mkdocs.org/)
+- Check the [Sphinx documentation](https://www.sphinx-doc.org/)
 - Check the [GitHub Pages documentation](https://docs.github.com/en/pages)
 - Open an issue in this repository
