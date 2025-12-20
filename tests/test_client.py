@@ -302,7 +302,7 @@ def test_list_catalogs_with_unexpected_response(config, mock_connection):
 
     client = TrinoClient(config)
 
-    with pytest.raises(RuntimeError, match="Unexpected response from SHOW CATALOGS"):
+    with pytest.raises(RuntimeError, match="Expected list of results from SHOW CATALOGS"):
         client.list_catalogs()
 
 
@@ -314,7 +314,7 @@ def test_list_schemas_with_unexpected_response(config, mock_connection):
 
     client = TrinoClient(config)
 
-    with pytest.raises(RuntimeError, match="Unexpected response from SHOW SCHEMAS"):
+    with pytest.raises(RuntimeError, match="Expected list of results from SHOW SCHEMAS"):
         client.list_schemas("test_catalog")
 
 
@@ -326,7 +326,7 @@ def test_list_tables_with_unexpected_response(config, mock_connection):
 
     client = TrinoClient(config)
 
-    with pytest.raises(RuntimeError, match="Unexpected response from SHOW TABLES"):
+    with pytest.raises(RuntimeError, match="Expected list of results from SHOW TABLES"):
         client.list_tables("catalog1", "schema1")
 
 
@@ -338,5 +338,5 @@ def test_show_create_table_with_unexpected_response(config, mock_connection):
 
     client = TrinoClient(config)
 
-    with pytest.raises(RuntimeError, match="Unexpected response from SHOW CREATE TABLE"):
+    with pytest.raises(RuntimeError, match="Expected list of results from SHOW CREATE TABLE"):
         client.show_create_table("catalog1", "schema1", "table1")
