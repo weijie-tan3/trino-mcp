@@ -202,6 +202,12 @@ black src/
 mypy src/
 ```
 
+### Publishing a New Version
+You can do it all in GitHub interface
+1. Update the version in `pyproject.toml`
+2. Create a GitHub release + new tag.
+3. CI will automatically build and publish to PyPI
+
 ### Known Issues
 
 **Pytest exits with code 137 (SIGKILL)**
