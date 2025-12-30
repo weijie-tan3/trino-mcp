@@ -2,6 +2,14 @@
 """Example usage of the Trino MCP client."""
 
 import os
+import sys
+
+# Add the src directory to the path for local development
+# This allows running the example without installing the package
+_src_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
+if os.path.exists(_src_path):
+    sys.path.insert(0, _src_path)
+
 from trino_mcp.config import load_config
 from trino_mcp.client import TrinoClient
 

@@ -66,8 +66,9 @@ class TrinoClient:
             rows = cursor.fetchall()
             return [dict(zip(columns, row)) for row in rows]
         else:
-            # Query executed successfully without results
-            return {"status": "success", "message": "Query executed successfully"}
+            # Query executed successfully but returned no output
+            # (e.g., INSERT, UPDATE, DELETE, CREATE, DROP statements)
+            return {"status": "success", "message": "Query executed successfully without output."}
 
     def execute_query(self, query: str) -> str:
         """Execute a SQL query and return results as JSON string.
