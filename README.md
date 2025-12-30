@@ -202,6 +202,20 @@ black src/
 mypy src/
 ```
 
+### Known Issues
+
+**Pytest exits with code 137 (SIGKILL)**
+
+If tests hang or exit with code 137, there may be stuck `trino-mcp` or `uv` processes consuming resources. Try killing them:
+
+```bash
+# Check for stuck processes
+ps aux | grep -E "trino-mcp|uvx" | grep -v grep
+
+# Kill if found
+pkill -f trino-mcp
+```
+
 ## License
 
 MIT License - see LICENSE file for details.
