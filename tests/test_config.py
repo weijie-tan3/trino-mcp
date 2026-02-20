@@ -240,28 +240,64 @@ def test_load_config_write_queries_default():
         "AZURE_SCOPE": "api://test-scope/.default",
     },
 )
+@patch("trino_mcp.config._get_user_from_jwt", return_value="mock-oid-12345")
+@patch("azure.identity.AzureCliCredential")
 @patch("azure.identity.ClientSecretCredential")
-def test_load_config_azure_spn(mock_credential_cls):
+def test_load_config_azure_spn(mock_spn_cls, mock_cli_cls, mock_get_user):
     """Test loading configuration with Azure SPN authentication."""
-    mock_credential = MagicMock()
+    # AzureCliCredential fails, falls through to ClientSecretCredential
+    mock_cli = MagicMock()
+    mock_cli.get_token.side_effect = Exception("az login not available")
+    mock_cli_cls.return_value = mock_cli
+
+    mock_spn = MagicMock()
     mock_token = MagicMock()
     mock_token.token = "test-jwt-token"
-    mock_credential.get_token.return_value = mock_token
-    mock_credential_cls.return_value = mock_credential
+    mock_spn.get_token.return_value = mock_token
+    mock_spn_cls.return_value = mock_spn
 
     config = load_config()
 
-    mock_credential_cls.assert_called_once_with(
+    mock_spn_cls.assert_called_once_with(
         tenant_id="test-tenant-id",
         client_id="test-client-id",
         client_secret="test-client-secret",
     )
-    mock_credential.get_token.assert_called_once_with("api://test-scope/.default")
+    mock_spn.get_token.assert_called_once_with("api://test-scope/.default")
     assert config.auth is not None
     assert config.http_scheme == "https"
     assert config.port == 443
+    assert config.user == "mock-oid-12345"
 
 
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "AZURE_SPN",
+        "AZURE_SCOPE": "api://test-scope/.default",
+    },
+)
+@patch("azure.identity.AzureCliCredential")
+def test_load_config_azure_spn_via_az_cli(mock_cli_cls):
+    """Test Azure SPN auth works via AzureCliCredential (az login)."""
+    mock_cli = MagicMock()
+    mock_token = MagicMock()
+    mock_token.token = "test-jwt-token"
+    mock_cli.get_token.return_value = mock_token
+    mock_cli_cls.return_value = mock_cli
+
+    with patch("trino_mcp.config._get_user_from_jwt", return_value="cli-oid"):
+        config = load_config()
+
+    mock_cli.get_token.assert_called_once_with("api://test-scope/.default")
+    assert config.auth is not None
+    assert config.user == "cli-oid"
+
+
+@patch("trino_mcp.config.load_dotenv")
 @patch.dict(
     os.environ,
     {
@@ -275,7 +311,7 @@ def test_load_config_azure_spn(mock_credential_cls):
     },
     clear=True,
 )
-def test_load_config_azure_spn_missing_scope():
+def test_load_config_azure_spn_missing_scope(mock_load_dotenv):
     """Test Azure SPN authentication fails when AZURE_SCOPE is missing."""
     with pytest.raises(ValueError, match="AZURE_SCOPE"):
         load_config()
@@ -288,10 +324,16 @@ def test_load_config_azure_spn_missing_scope():
         "TRINO_PORT": "8080",
         "TRINO_USER": "trino",
         "AUTH_METHOD": "AZURE_SPN",
+        "AZURE_SCOPE": "api://test-scope/.default",
     },
     clear=True,
 )
-def test_load_config_azure_spn_missing_all_vars():
-    """Test Azure SPN authentication fails when all Azure vars are missing."""
-    with pytest.raises(ValueError, match="AZURE_CLIENT_ID"):
+@patch("azure.identity.DefaultAzureCredential")
+@patch("azure.identity.AzureCliCredential")
+def test_load_config_azure_spn_no_creds_all_fail(mock_cli_cls, mock_default_cls):
+    """Test Azure SPN authentication fails when no credential method works."""
+    mock_cli_cls.return_value.get_token.side_effect = Exception("no az login")
+    mock_default_cls.return_value.get_token.side_effect = Exception("no managed identity")
+
+    with pytest.raises(ValueError, match="Failed to acquire Azure token"):
         load_config()
