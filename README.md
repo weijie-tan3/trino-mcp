@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PyPI](https://img.shields.io/pypi/v/trino-mcp.svg)](https://pypi.org/project/trino-mcp/)
 
-A simple Model Context Protocol (MCP) server for Trino query engine with OAuth support (without explicit JWT tokens).
+A simple Model Context Protocol (MCP) server for Trino query engine with OAuth and Azure Service Principal (SPN) support.
 
 ## Quick Start (TLDR)
 
@@ -47,8 +47,8 @@ That's it! The server will connect to your Trino cluster and provide query capab
 ## Features
 
 - **Core Trino Operations**: Query catalogs, schemas, tables, and execute SQL
-- **OAuth Support**: Built-in OAuth2 authentication without requiring explicit JWT tokens
-- **Basic Authentication**: Also supports username/password authentication
+- **Multiple Auth Methods**: OAuth2, Azure Service Principal (SPN), basic username/password, or no auth
+- **Azure SPN with Auto-Refresh**: Tokens are automatically refreshed before each request — no expiry issues for long-running servers
 - **Simple & Focused**: Core Trino features without over-complication
 - **uvx Compatible**: Run directly with `uvx` without installation
 - **Write Protection**: Separate tools (`execute_query` and `execute_query_read_only`) with `ALLOW_WRITE_QUERIES` configuration to prevent accidental database modifications
@@ -122,17 +122,27 @@ Configure the server using environment variables or a `.env` file:
 ```bash
 # Required
 TRINO_HOST=localhost              # Your Trino server hostname
-TRINO_PORT=8080                   # Trino server port
-TRINO_USER=trino                  # Username for authentication
-TRINO_HTTP_SCHEME=http            # http or https
+TRINO_PORT=8080                   # Trino server port (auto-set to 443 for Azure SPN/OAuth2)
+TRINO_USER=trino                  # Username (auto-detected from JWT for Azure SPN)
+TRINO_HTTP_SCHEME=http            # http or https (auto-set to https for Azure SPN/OAuth2)
 
 # Optional
 TRINO_CATALOG=my_catalog          # Default catalog
 TRINO_SCHEMA=my_schema            # Default schema
 
-# Authentication (choose one):
-TRINO_PASSWORD=your_password      # For basic authentication
-TRINO_OAUTH_TOKEN=your_token      # For OAuth2 authentication
+# Authentication method: PASSWORD (default), OAUTH2, AZURE_SPN, or NONE
+AUTH_METHOD=PASSWORD
+
+# Option 1: Basic Authentication (AUTH_METHOD=PASSWORD)
+TRINO_PASSWORD=your_password
+
+# Option 2: OAuth2 (AUTH_METHOD=OAUTH2)
+# Uses Trino's built-in OAuth2 flow (browser-based)
+
+# Option 3: Azure Service Principal (AUTH_METHOD=AZURE_SPN)
+# See "Azure SPN Authentication" section below
+
+# Option 4: No auth (AUTH_METHOD=NONE)
 
 # Security
 ALLOW_WRITE_QUERIES=true          # Enable write operations (INSERT, UPDATE, DELETE, etc.)
@@ -159,17 +169,87 @@ python3 scripts/generate_tool_docs.py
 # This creates TOOLS.md and tools.json with complete documentation
 ```
 
-## OAuth Authentication
+## Authentication
 
-This server is designed to work with Trino's OAuth2 authentication mechanism. The Trino Python client supports OAuth2 authentication through a redirect handler mechanism that doesn't require you to manually manage JWT tokens.
+### OAuth2
 
-### How OAuth Works with Trino
+Set `AUTH_METHOD=OAUTH2`. The Trino Python client handles the OAuth2 flow automatically through a browser-based redirect — no manual JWT handling required.
 
-1. **Server Configuration**: Configure your Trino cluster with OAuth2 authentication
-2. **Client Connection**: The Trino Python client handles the OAuth2 flow automatically
-3. **Token Management**: Tokens are managed by the client library - no manual JWT handling required
+### Azure Service Principal (SPN)
 
-**Note**: OAuth2 support in the Trino Python client requires implementing a redirect handler. This server provides the foundation for OAuth2 integration. For production use with OAuth2, you may need to extend the configuration to implement your specific OAuth2 flow based on your identity provider.
+For non-interactive / CI environments using Azure AD. Install with Azure extras:
+
+```bash
+# pip
+pip install trino-mcp[azure]
+
+# uv
+uv pip install trino-mcp[azure]
+
+# uvx (auto-installs extras)
+uvx --extra azure trino-mcp
+```
+
+The server tries three credential methods in order:
+
+1. **`az login` (AzureCliCredential)** — Easiest for local dev. Just run `az login --service-principal` beforehand.
+2. **Environment variables (ClientSecretCredential)** — Best for CI/CD. Set `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, and `AZURE_TENANT_ID`.
+3. **DefaultAzureCredential** — Fallback for managed identity, etc.
+
+`AZURE_SCOPE` is always required (the Trino server's Azure AD app scope, e.g. `api://<trino-app-id>/.default`).
+
+#### Option A: Using `az login` (local development)
+
+```bash
+# Login as the service principal
+az login --service-principal \
+    --username "$AZURE_CLIENT_ID" \
+    --password "$AZURE_CLIENT_SECRET" \
+    --tenant "$AZURE_TENANT_ID" \
+    --allow-no-subscriptions
+```
+
+`.env`:
+```bash
+AUTH_METHOD=AZURE_SPN
+AZURE_SCOPE=api://your-trino-app-id/.default
+TRINO_HOST=trino.example.com
+TRINO_CATALOG=hive
+TRINO_SCHEMA=default
+```
+
+#### Option B: Using environment variables (CI/CD)
+
+`.env`:
+```bash
+AUTH_METHOD=AZURE_SPN
+AZURE_SCOPE=api://your-trino-app-id/.default
+AZURE_CLIENT_ID=your-client-id
+AZURE_CLIENT_SECRET=your-client-secret
+AZURE_TENANT_ID=your-tenant-id
+TRINO_HOST=trino.example.com
+TRINO_CATALOG=hive
+TRINO_SCHEMA=default
+```
+
+#### VS Code MCP config for Azure SPN
+
+```json
+{
+  "servers": {
+    "trino": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--extra", "azure", "trino-mcp"],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}
+```
+
+The server reads from `.env` automatically — no need to duplicate env vars in `mcp.json`.
+
+> **Token auto-refresh**: The server automatically refreshes Azure tokens before each Trino request, so it works reliably for long-running sessions without expiry issues.
 
 ## Architecture
 
@@ -203,10 +283,8 @@ mypy src/
 ```
 
 ### Publishing a New Version
-You can do it all in GitHub interface
-1. Update the version in `pyproject.toml`
-2. Create a GitHub release + new tag.
-3. CI will automatically build and publish to PyPI
+
+See [docs/dev.md](docs/dev.md) for release instructions.
 
 ### Known Issues
 

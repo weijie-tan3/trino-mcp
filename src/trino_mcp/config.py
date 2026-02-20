@@ -1,11 +1,58 @@
 """Configuration for Trino connection."""
 
+import base64
+import json
 import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional, Tuple
 
 import trino.auth
 from dotenv import load_dotenv
+from requests import Session
+
+
+class _BearerAuth:
+    """Bearer token auth for requests."""
+
+    def __init__(self, token: str):
+        self.token = token
+
+    def __call__(self, r: Any) -> Any:
+        r.headers["Authorization"] = f"Bearer {self.token}"
+        return r
+
+
+class AzureAutoRefreshAuthentication(trino.auth.Authentication):
+    """JWT authentication that auto-refreshes the token via an Azure credential.
+
+    Unlike JWTAuthentication which holds a static token, this class stores
+    the Azure credential and scope so it can fetch a fresh token on each
+    request, avoiding expiry issues for long-running MCP servers.
+    """
+
+    def __init__(self, credential: Any, scope: str):
+        self._credential = credential
+        self._scope = scope
+
+    def set_http_session(self, http_session: Session) -> Session:
+        token = self._credential.get_token(self._scope).token
+        http_session.auth = _BearerAuth(token)
+        return http_session
+
+    def get_exceptions(self) -> Tuple[Any, ...]:
+        return ()
+
+
+def _get_user_from_jwt(token: str) -> Optional[str]:
+    """Extract the user identity (oid) from a JWT token payload."""
+    try:
+        payload = token.split(".")[1]
+        # Add padding for base64 decoding
+        payload += "=" * (-len(payload) % 4)
+        data = json.loads(base64.urlsafe_b64decode(payload))
+        return data.get("oid") or data.get("sub")
+    except Exception:
+        return None
 
 
 @dataclass
@@ -52,6 +99,79 @@ def load_config() -> TrinoConfig:
         http_scheme = "https"
         port = 443
         additional_kwargs["http_headers"] = {"X-Client-Info": "secured"}
+
+    elif auth_method == "AZURE_SPN":
+        try:
+            from azure.identity import (
+                AzureCliCredential,
+                ClientSecretCredential,
+                DefaultAzureCredential,
+            )
+        except ImportError:
+            raise ImportError(
+                "azure-identity is required for AZURE_SPN authentication. "
+                "Install it with: pip install trino-mcp[azure]"
+            )
+        scope = os.getenv("AZURE_SCOPE")
+        if not scope:
+            raise ValueError(
+                "AZURE_SCOPE must be set for Azure SPN authentication "
+                "(e.g. api://<trino-app-id>/.default)"
+            )
+
+        token = None
+        working_credential = None
+
+        # 1. Try AzureCliCredential (works after `az login --service-principal`)
+        try:
+            credential = AzureCliCredential()
+            token = credential.get_token(scope).token
+            working_credential = credential
+        except Exception:
+            pass
+
+        # 2. Try ClientSecretCredential if env vars are set
+        if token is None:
+            client_id = os.getenv("AZURE_CLIENT_ID")
+            client_secret = os.getenv("AZURE_CLIENT_SECRET")
+            tenant_id = os.getenv("AZURE_TENANT_ID")
+            if client_id and client_secret and tenant_id:
+                try:
+                    credential = ClientSecretCredential(
+                        tenant_id=tenant_id,
+                        client_id=client_id,
+                        client_secret=client_secret,
+                    )
+                    token = credential.get_token(scope).token
+                    working_credential = credential
+                except Exception:
+                    pass
+
+        # 3. Fallback to DefaultAzureCredential (managed identity, etc.)
+        if token is None:
+            try:
+                credential = DefaultAzureCredential()
+                token = credential.get_token(scope).token
+                working_credential = credential
+            except Exception:
+                pass
+
+        if token is None or working_credential is None:
+            raise ValueError(
+                "Failed to acquire Azure token. Either run "
+                "'az login --service-principal' or set AZURE_CLIENT_ID, "
+                "AZURE_CLIENT_SECRET, and AZURE_TENANT_ID environment variables."
+            )
+
+        # Extract user identity (oid) from the JWT token to avoid
+        # impersonation errors — Trino expects the SPN's OID, not a username.
+        user = _get_user_from_jwt(token) or user
+
+        # Use auto-refreshing auth so the token is refreshed before each
+        # request, avoiding expiry issues for long-running MCP servers.
+        auth = AzureAutoRefreshAuthentication(working_credential, scope)
+        http_scheme = "https"
+        port = 443
 
     elif auth_method == "NONE":
         # No authentication
