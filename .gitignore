@@ -213,3 +213,4 @@ __marimo__/
 htmlcov
 coverage.xml
 .coverage
+.env-user

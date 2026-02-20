@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from trino_mcp.config import TrinoConfig, load_config
+from trino_mcp.config import AzureAutoRefreshAuthentication, TrinoConfig, load_config
 
 
 def test_trino_config_defaults():
@@ -264,7 +264,7 @@ def test_load_config_azure_spn(mock_spn_cls, mock_cli_cls, mock_get_user):
         client_secret="test-client-secret",
     )
     mock_spn.get_token.assert_called_once_with("api://test-scope/.default")
-    assert config.auth is not None
+    assert isinstance(config.auth, AzureAutoRefreshAuthentication)
     assert config.http_scheme == "https"
     assert config.port == 443
     assert config.user == "mock-oid-12345"
@@ -293,7 +293,7 @@ def test_load_config_azure_spn_via_az_cli(mock_cli_cls):
         config = load_config()
 
     mock_cli.get_token.assert_called_once_with("api://test-scope/.default")
-    assert config.auth is not None
+    assert isinstance(config.auth, AzureAutoRefreshAuthentication)
     assert config.user == "cli-oid"
 
 
