@@ -283,10 +283,8 @@ mypy src/
 ```
 
 ### Publishing a New Version
-You can do it all in GitHub interface
-1. Update the version in `pyproject.toml`
-2. Create a GitHub release + new tag.
-3. CI will automatically build and publish to PyPI
+
+See [docs/dev.md](docs/dev.md) for release instructions.
 
 ### Known Issues
 
