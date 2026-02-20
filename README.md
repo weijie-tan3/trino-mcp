@@ -186,8 +186,8 @@ pip install trino-mcp[azure]
 # uv
 uv pip install trino-mcp[azure]
 
-# uvx (auto-installs extras)
-uvx --extra azure trino-mcp
+# uvx (install azure-identity alongside)
+uvx --from "trino-mcp>=0.1.4" --with azure-identity trino-mcp
 ```
 
 The server tries three credential methods in order:
@@ -239,8 +239,8 @@ TRINO_SCHEMA=default
   "servers": {
     "trino": {
       "type": "stdio",
-      "command": "uv",
-      "args": ["run", "--extra", "azure", "trino-mcp"],
+      "command": "uvx",
+      "args": ["--from", "trino-mcp>=0.1.4", "--with", "azure-identity", "trino-mcp"],
       "cwd": "${workspaceFolder}"
     }
   }
