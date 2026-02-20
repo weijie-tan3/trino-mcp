@@ -277,7 +277,7 @@ def test_load_config_azure_spn(mock_credential_cls):
 )
 def test_load_config_azure_spn_missing_scope():
     """Test Azure SPN authentication fails when AZURE_SCOPE is missing."""
-    with pytest.raises(ValueError, match="AZURE_SCOPE must be set"):
+    with pytest.raises(ValueError, match="AZURE_SCOPE"):
         load_config()
 
 

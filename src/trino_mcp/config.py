@@ -65,10 +65,20 @@ def load_config() -> TrinoConfig:
         client_secret = os.getenv("AZURE_CLIENT_SECRET")
         tenant_id = os.getenv("AZURE_TENANT_ID")
         scope = os.getenv("AZURE_SCOPE")
-        if not all([client_id, client_secret, tenant_id, scope]):
+        missing = [
+            name
+            for name, val in [
+                ("AZURE_CLIENT_ID", client_id),
+                ("AZURE_CLIENT_SECRET", client_secret),
+                ("AZURE_TENANT_ID", tenant_id),
+                ("AZURE_SCOPE", scope),
+            ]
+            if not val
+        ]
+        if missing:
             raise ValueError(
-                "AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, and "
-                "AZURE_SCOPE must be set for Azure SPN authentication"
+                f"Missing required environment variables for Azure SPN "
+                f"authentication: {', '.join(missing)}"
             )
         credential = ClientSecretCredential(
             tenant_id=tenant_id,
