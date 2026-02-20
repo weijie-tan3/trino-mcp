@@ -225,3 +225,73 @@ def test_load_config_write_queries_default():
     config = load_config()
 
     assert config.allow_write_queries is False
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "AZURE_SPN",
+        "AZURE_CLIENT_ID": "test-client-id",
+        "AZURE_CLIENT_SECRET": "test-client-secret",
+        "AZURE_TENANT_ID": "test-tenant-id",
+        "AZURE_SCOPE": "api://test-scope/.default",
+    },
+)
+@patch("azure.identity.ClientSecretCredential")
+def test_load_config_azure_spn(mock_credential_cls):
+    """Test loading configuration with Azure SPN authentication."""
+    mock_credential = MagicMock()
+    mock_token = MagicMock()
+    mock_token.token = "test-jwt-token"
+    mock_credential.get_token.return_value = mock_token
+    mock_credential_cls.return_value = mock_credential
+
+    config = load_config()
+
+    mock_credential_cls.assert_called_once_with(
+        tenant_id="test-tenant-id",
+        client_id="test-client-id",
+        client_secret="test-client-secret",
+    )
+    mock_credential.get_token.assert_called_once_with("api://test-scope/.default")
+    assert config.auth is not None
+    assert config.http_scheme == "https"
+    assert config.port == 443
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "AZURE_SPN",
+        "AZURE_CLIENT_ID": "test-client-id",
+        "AZURE_CLIENT_SECRET": "test-client-secret",
+        "AZURE_TENANT_ID": "test-tenant-id",
+    },
+    clear=True,
+)
+def test_load_config_azure_spn_missing_scope():
+    """Test Azure SPN authentication fails when AZURE_SCOPE is missing."""
+    with pytest.raises(ValueError, match="AZURE_SCOPE must be set"):
+        load_config()
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "AZURE_SPN",
+    },
+    clear=True,
+)
+def test_load_config_azure_spn_missing_all_vars():
+    """Test Azure SPN authentication fails when all Azure vars are missing."""
+    with pytest.raises(ValueError, match="AZURE_CLIENT_ID"):
+        load_config()

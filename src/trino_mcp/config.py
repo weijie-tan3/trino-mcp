@@ -53,6 +53,33 @@ def load_config() -> TrinoConfig:
         port = 443
         additional_kwargs["http_headers"] = {"X-Client-Info": "secured"}
 
+    elif auth_method == "AZURE_SPN":
+        try:
+            from azure.identity import ClientSecretCredential
+        except ImportError:
+            raise ImportError(
+                "azure-identity is required for AZURE_SPN authentication. "
+                "Install it with: pip install trino-mcp[azure]"
+            )
+        client_id = os.getenv("AZURE_CLIENT_ID")
+        client_secret = os.getenv("AZURE_CLIENT_SECRET")
+        tenant_id = os.getenv("AZURE_TENANT_ID")
+        scope = os.getenv("AZURE_SCOPE")
+        if not all([client_id, client_secret, tenant_id, scope]):
+            raise ValueError(
+                "AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, and "
+                "AZURE_SCOPE must be set for Azure SPN authentication"
+            )
+        credential = ClientSecretCredential(
+            tenant_id=tenant_id,
+            client_id=client_id,
+            client_secret=client_secret,
+        )
+        token = credential.get_token(scope).token
+        auth = trino.auth.JWTAuthentication(token)
+        http_scheme = "https"
+        port = 443
+
     elif auth_method == "NONE":
         # No authentication
         auth = None
