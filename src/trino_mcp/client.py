@@ -1,5 +1,7 @@
 """Trino client for executing queries."""
 
+import csv
+import io
 import json
 from typing import Any, Dict, List, Union
 
@@ -70,14 +72,44 @@ class TrinoClient:
             # (e.g., INSERT, UPDATE, DELETE, CREATE, DROP statements)
             return {"status": "success", "message": "Query executed successfully without output."}
 
-    def execute_query(self, query: str) -> str:
-        """Execute a SQL query and return results as JSON string.
+    def execute_query(self, query: str, format: str = "json") -> str:
+        """Execute a SQL query and return results as a formatted string.
         
-        Note: This method returns a JSON string for backward compatibility with MCP server.
-        For programmatic use as a library, use execute_query_raw() to get native Python data structures.
+        Args:
+            query: The SQL query to execute
+            format: Output format - "json" (default) or "csv"
+            
+        Returns:
+            The query results as a formatted string.
+            For "json": JSON string with 2-space indentation.
+            For "csv": CSV string with header row and data rows.
+            
+        Note: For programmatic use as a library, use execute_query_raw() to get native Python data structures.
         """
         result = self.execute_query_raw(query)
+        if format == "csv":
+            return self._format_csv(result)
         return json.dumps(result, default=str, indent=2)
+
+    def _format_csv(self, data: Union[List[Dict[str, Any]], Dict[str, Any]]) -> str:
+        """Format query results as a CSV string.
+        
+        Args:
+            data: Query results as a list of dicts (rows) or a single dict (status)
+            
+        Returns:
+            CSV-formatted string with header row and data rows
+        """
+        output = io.StringIO()
+        if isinstance(data, list) and len(data) > 0:
+            writer = csv.DictWriter(output, fieldnames=data[0].keys())
+            writer.writeheader()
+            writer.writerows(data)
+        elif isinstance(data, dict):
+            writer = csv.DictWriter(output, fieldnames=data.keys())
+            writer.writeheader()
+            writer.writerow(data)
+        return output.getvalue()
 
     def list_catalogs(self) -> List[str]:
         """List all available catalogs."""

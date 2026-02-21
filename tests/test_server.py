@@ -95,7 +95,7 @@ def test_execute_query_read_only_tool(mock_client):
     result = execute_query_read_only("SELECT 1")
 
     assert "value" in result
-    mock_client.execute_query.assert_called_once_with("SELECT 1")
+    mock_client.execute_query.assert_called_once_with("SELECT 1", format="json")
 
 
 @pytest.mark.parametrize(
@@ -149,7 +149,7 @@ def test_execute_query_read_only_allows_read_queries(mock_client, query, expecte
     result = execute_query_read_only(query)
 
     assert "test" in result
-    mock_client.execute_query.assert_called_once_with(query)
+    mock_client.execute_query.assert_called_once_with(query, format="json")
 
 
 @patch("trino_mcp.server.client")
@@ -181,7 +181,7 @@ def test_execute_query_tool_write_enabled(mock_config, mock_client):
     result = execute_query("SELECT 1")
 
     assert "value" in result
-    mock_client.execute_query.assert_called_once_with("SELECT 1")
+    mock_client.execute_query.assert_called_once_with("SELECT 1", format="json")
 
 
 @patch("trino_mcp.server.client")
@@ -218,6 +218,46 @@ def test_mcp_server_initialization():
 
     assert mcp is not None
     assert mcp.name == "Trino MCP Server"
+
+
+@patch("trino_mcp.server.client")
+def test_execute_query_read_only_csv_format(mock_client):
+    """Test execute_query_read_only tool with CSV format."""
+    from trino_mcp.server import execute_query_read_only
+
+    mock_client.execute_query.return_value = "col1,col2\r\nval1,val2\r\n"
+
+    result = execute_query_read_only("SELECT 1", format="csv")
+
+    assert "val1" in result
+    mock_client.execute_query.assert_called_once_with("SELECT 1", format="csv")
+
+
+@patch("trino_mcp.server.client")
+@patch("trino_mcp.server.config")
+def test_execute_query_csv_format(mock_config, mock_client):
+    """Test execute_query tool with CSV format."""
+    from trino_mcp.server import execute_query
+
+    mock_config.allow_write_queries = True
+    mock_client.execute_query.return_value = "col1,col2\r\nval1,val2\r\n"
+
+    result = execute_query("SELECT 1", format="csv")
+
+    assert "val1" in result
+    mock_client.execute_query.assert_called_once_with("SELECT 1", format="csv")
+
+
+@patch("trino_mcp.server.client")
+def test_execute_query_read_only_default_json_format(mock_client):
+    """Test execute_query_read_only tool defaults to JSON format."""
+    from trino_mcp.server import execute_query_read_only
+
+    mock_client.execute_query.return_value = '[{"col": "value"}]'
+
+    result = execute_query_read_only("SELECT 1")
+
+    mock_client.execute_query.assert_called_once_with("SELECT 1", format="json")
 
 
 def test_main_function_exists():

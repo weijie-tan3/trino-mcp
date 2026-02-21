@@ -1,5 +1,7 @@
 """Tests for Trino client module."""
 
+import csv
+import io
 import json
 from unittest.mock import MagicMock, Mock, patch
 
@@ -340,3 +342,86 @@ def test_show_create_table_with_unexpected_response(config, mock_connection):
 
     with pytest.raises(RuntimeError, match="Expected list of results from SHOW CREATE TABLE"):
         client.show_create_table("catalog1", "schema1", "table1")
+
+
+def test_execute_query_csv_with_results(config, mock_connection):
+    """Test executing a query with CSV format returns proper CSV output."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("col1",), ("col2",)]
+    mock_cursor.fetchall.return_value = [("val1", "val2"), ("val3", "val4")]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    result = client.execute_query("SELECT * FROM test", format="csv")
+
+    reader = csv.DictReader(io.StringIO(result))
+    rows = list(reader)
+    assert len(rows) == 2
+    assert rows[0] == {"col1": "val1", "col2": "val2"}
+    assert rows[1] == {"col1": "val3", "col2": "val4"}
+
+
+def test_execute_query_csv_without_results(config, mock_connection):
+    """Test executing a DDL/DML query with CSV format."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = None
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    result = client.execute_query("CREATE TABLE test (id INT)", format="csv")
+
+    reader = csv.DictReader(io.StringIO(result))
+    rows = list(reader)
+    assert len(rows) == 1
+    assert rows[0]["status"] == "success"
+    assert "executed successfully" in rows[0]["message"]
+
+
+def test_execute_query_csv_empty_results(config, mock_connection):
+    """Test executing a query that returns no rows with CSV format."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("col1",), ("col2",)]
+    mock_cursor.fetchall.return_value = []
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    result = client.execute_query("SELECT * FROM empty_table", format="csv")
+
+    # Empty result should produce empty string
+    assert result == ""
+
+
+def test_execute_query_csv_special_characters(config, mock_connection):
+    """Test CSV output properly handles special characters."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("name",), ("value",)]
+    mock_cursor.fetchall.return_value = [
+        ('hello, world', 'has "quotes"'),
+        ("line1\nline2", "simple"),
+    ]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    result = client.execute_query("SELECT * FROM test", format="csv")
+
+    reader = csv.DictReader(io.StringIO(result))
+    rows = list(reader)
+    assert len(rows) == 2
+    assert rows[0]["name"] == "hello, world"
+    assert rows[0]["value"] == 'has "quotes"'
+    assert rows[1]["name"] == "line1\nline2"
+
+
+def test_execute_query_default_format_is_json(config, mock_connection):
+    """Test that default format is JSON when format parameter is not specified."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("col1",)]
+    mock_cursor.fetchall.return_value = [("val1",)]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    result = client.execute_query("SELECT 1")
+
+    # Default should be JSON
+    data = json.loads(result)
+    assert data[0] == {"col1": "val1"}

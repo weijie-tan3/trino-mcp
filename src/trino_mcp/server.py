@@ -2,6 +2,8 @@
 
 import logging
 import sys
+from typing import Annotated
+
 import sqlglot
 from sqlglot.expressions import (
     Insert, Update, Delete, Merge, Create, Drop, Alter,
@@ -91,17 +93,18 @@ def _is_read_only_query(query: str) -> bool:
     return not any(isinstance(node, WRITE_TYPES) for node in expr.walk())
 
 
-def _try_execute_query(query: str) -> str:
+def _try_execute_query(query: str, format: str = "json") -> str:
     """Common function to execute a query.
     
     Args:
         query: The SQL query to execute
+        format: Output format - "json" (default) or "csv"
         
     Returns:
-        The query results as a JSON string or error message
+        The query results as a formatted string or error message
     """
     try:
-        result = client.execute_query(query)
+        result = client.execute_query(query, format=format)
         logger.debug("Query executed successfully")
         return result
     except Exception as e:
@@ -186,14 +189,19 @@ def describe_table(
 
 
 @mcp.tool()
-def execute_query_read_only(query: str = Field(description="The SQL query to execute (read-only)")) -> str:
+def execute_query_read_only(
+    query: str = Field(description="The SQL query to execute (read-only)"),
+    format: Annotated[str, Field(description="Output format: 'json' (default) or 'csv'")] = "json",
+) -> str:
     """Execute a read-only SQL query and return the results.
     
     This tool is designed for read-only queries (SELECT, SHOW, DESCRIBE, EXPLAIN, etc.).
     It validates that the query is read-only before execution.
+    Results can be returned in JSON or CSV format for easy scripting.
 
     Args:
         query: The SQL query to execute (must be read-only)
+        format: Output format - "json" (default) or "csv"
     """
     logger.info(f"Executing read-only query: {query[:100]}...")
     
@@ -208,18 +216,23 @@ def execute_query_read_only(query: str = Field(description="The SQL query to exe
         )
     
     # Execute the query using the common function
-    return _try_execute_query(query)
+    return _try_execute_query(query, format=format)
 
 
 @mcp.tool()
-def execute_query(query: str = Field(description="The SQL query to execute")) -> str:
+def execute_query(
+    query: str = Field(description="The SQL query to execute"),
+    format: Annotated[str, Field(description="Output format: 'json' (default) or 'csv'")] = "json",
+) -> str:
     """Execute a SQL query and return the results.
     
     This tool can execute any SQL query including write operations (INSERT, UPDATE, DELETE, etc.).
     By default, write operations are disabled for security. Set ALLOW_WRITE_QUERIES=true to enable.
+    Results can be returned in JSON or CSV format for easy scripting.
 
     Args:
         query: The SQL query to execute
+        format: Output format - "json" (default) or "csv"
     """
     logger.info(f"Executing query: {query[:100]}...")
     
@@ -234,7 +247,7 @@ def execute_query(query: str = Field(description="The SQL query to execute")) ->
         )
     
     # Execute the query using the common function
-    return _try_execute_query(query)
+    return _try_execute_query(query, format=format)
 
 
 @mcp.tool()
