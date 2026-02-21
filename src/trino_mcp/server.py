@@ -93,6 +93,35 @@ def _is_read_only_query(query: str) -> bool:
     return not any(isinstance(node, WRITE_TYPES) for node in expr.walk())
 
 
+def _parse_table_identifier(table: str, catalog: str, schema: str) -> tuple:
+    """Parse a table identifier that may be fully qualified.
+
+    Handles cases where the table parameter contains a fully qualified name
+    like 'catalog.schema.table' or 'schema.table', extracting the parts and
+    using them as overrides when catalog/schema are not already provided.
+
+    Args:
+        table: The table name, which may be fully qualified (e.g., 'catalog.schema.table')
+        catalog: The catalog name (may be empty)
+        schema: The schema name (may be empty)
+
+    Returns:
+        A tuple of (catalog, schema, table) with the parsed values
+    """
+    # Note: This simple split does not handle quoted identifiers containing
+    # periods (e.g., "my.catalog"."my.schema"."my.table").
+    parts = table.split(".")
+    if len(parts) == 3:
+        # Fully qualified: catalog.schema.table
+        return (catalog or parts[0], schema or parts[1], parts[2])
+    elif len(parts) == 2:
+        # Partially qualified: schema.table
+        return (catalog, schema or parts[0], parts[1])
+    else:
+        # Just the table name
+        return (catalog, schema, table)
+
+
 def _try_execute_query(query: str, format: str = "json") -> str:
     """Common function to execute a query.
     
@@ -165,22 +194,21 @@ def list_tables(
 
 @mcp.tool()
 def describe_table(
-    table: str = Field(description="The table name"),
-    catalog: str = Field(description="The catalog name", default=""),
-    schema: str = Field(description="The schema name", default=""),
+    table: str = Field(description="The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted for convenience."),
+    catalog: str = Field(description="The catalog name (e.g. 'my_catalog')", default=""),
+    schema: str = Field(description="The schema name (e.g. 'my_schema')", default=""),
 ) -> str:
     """Describe the structure of a table (columns, types, etc).
 
     Args:
-        table: The name of the table
+        table: The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted.
         catalog: The catalog name (optional if default is configured)
         schema: The schema name (optional if default is configured)
     """
     logger.info(f"Describing table: {catalog}.{schema}.{table}")
     try:
-        cat = catalog if catalog else ""
-        sch = schema if schema else ""
-        result = client.describe_table(cat, sch, table)
+        cat, sch, tbl = _parse_table_identifier(table, catalog, schema)
+        result = client.describe_table(cat, sch, tbl)
         logger.debug(f"Table description retrieved successfully")
         return result
     except Exception as e:
@@ -252,22 +280,21 @@ def execute_query(
 
 @mcp.tool()
 def show_create_table(
-    table: str = Field(description="The table name"),
-    catalog: str = Field(description="The catalog name", default=""),
-    schema: str = Field(description="The schema name", default=""),
+    table: str = Field(description="The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted for convenience."),
+    catalog: str = Field(description="The catalog name (e.g. 'my_catalog')", default=""),
+    schema: str = Field(description="The schema name (e.g. 'my_schema')", default=""),
 ) -> str:
     """Show the CREATE TABLE statement for a table.
 
     Args:
-        table: The name of the table
+        table: The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted.
         catalog: The catalog name (optional if default is configured)
         schema: The schema name (optional if default is configured)
     """
     logger.info(f"Getting CREATE TABLE for: {catalog}.{schema}.{table}")
     try:
-        cat = catalog if catalog else ""
-        sch = schema if schema else ""
-        result = client.show_create_table(cat, sch, table)
+        cat, sch, tbl = _parse_table_identifier(table, catalog, schema)
+        result = client.show_create_table(cat, sch, tbl)
         logger.debug(f"CREATE TABLE retrieved successfully")
         return result
     except Exception as e:
@@ -277,22 +304,21 @@ def show_create_table(
 
 @mcp.tool()
 def get_table_stats(
-    table: str = Field(description="The table name"),
-    catalog: str = Field(description="The catalog name", default=""),
-    schema: str = Field(description="The schema name", default=""),
+    table: str = Field(description="The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted for convenience."),
+    catalog: str = Field(description="The catalog name (e.g. 'my_catalog')", default=""),
+    schema: str = Field(description="The schema name (e.g. 'my_schema')", default=""),
 ) -> str:
     """Get statistics for a table.
 
     Args:
-        table: The name of the table
+        table: The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted.
         catalog: The catalog name (optional if default is configured)
         schema: The schema name (optional if default is configured)
     """
     logger.info(f"Getting table stats for: {catalog}.{schema}.{table}")
     try:
-        cat = catalog if catalog else ""
-        sch = schema if schema else ""
-        result = client.get_table_stats(cat, sch, table)
+        cat, sch, tbl = _parse_table_identifier(table, catalog, schema)
+        result = client.get_table_stats(cat, sch, tbl)
         logger.debug(f"Table stats retrieved successfully")
         return result
     except Exception as e:
