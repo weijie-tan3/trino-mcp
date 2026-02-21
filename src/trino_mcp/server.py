@@ -106,6 +106,8 @@ def _parse_table_identifier(table: str, catalog: str, schema: str) -> tuple:
     Returns:
         A tuple of (catalog, schema, table) with the parsed values
     """
+    # Note: This simple split does not handle quoted identifiers containing
+    # periods (e.g., "my.catalog"."my.schema"."my.table").
     parts = table.split(".")
     if len(parts) == 3:
         # Fully qualified: catalog.schema.table
@@ -189,14 +191,14 @@ def list_tables(
 
 @mcp.tool()
 def describe_table(
-    table: str = Field(description="The table name only (e.g. 'my_table'). Do not use a fully qualified name; pass catalog and schema as separate parameters instead."),
+    table: str = Field(description="The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted for convenience."),
     catalog: str = Field(description="The catalog name (e.g. 'my_catalog')", default=""),
     schema: str = Field(description="The schema name (e.g. 'my_schema')", default=""),
 ) -> str:
     """Describe the structure of a table (columns, types, etc).
 
     Args:
-        table: The table name only (e.g. 'my_table'). Do not pass a fully qualified name like 'catalog.schema.table'; use the catalog and schema parameters instead.
+        table: The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted.
         catalog: The catalog name (optional if default is configured)
         schema: The schema name (optional if default is configured)
     """
@@ -265,14 +267,14 @@ def execute_query(query: str = Field(description="The SQL query to execute")) ->
 
 @mcp.tool()
 def show_create_table(
-    table: str = Field(description="The table name only (e.g. 'my_table'). Do not use a fully qualified name; pass catalog and schema as separate parameters instead."),
+    table: str = Field(description="The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted for convenience."),
     catalog: str = Field(description="The catalog name (e.g. 'my_catalog')", default=""),
     schema: str = Field(description="The schema name (e.g. 'my_schema')", default=""),
 ) -> str:
     """Show the CREATE TABLE statement for a table.
 
     Args:
-        table: The table name only (e.g. 'my_table'). Do not pass a fully qualified name like 'catalog.schema.table'; use the catalog and schema parameters instead.
+        table: The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted.
         catalog: The catalog name (optional if default is configured)
         schema: The schema name (optional if default is configured)
     """
@@ -289,14 +291,14 @@ def show_create_table(
 
 @mcp.tool()
 def get_table_stats(
-    table: str = Field(description="The table name only (e.g. 'my_table'). Do not use a fully qualified name; pass catalog and schema as separate parameters instead."),
+    table: str = Field(description="The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted for convenience."),
     catalog: str = Field(description="The catalog name (e.g. 'my_catalog')", default=""),
     schema: str = Field(description="The schema name (e.g. 'my_schema')", default=""),
 ) -> str:
     """Get statistics for a table.
 
     Args:
-        table: The table name only (e.g. 'my_table'). Do not pass a fully qualified name like 'catalog.schema.table'; use the catalog and schema parameters instead.
+        table: The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted.
         catalog: The catalog name (optional if default is configured)
         schema: The schema name (optional if default is configured)
     """
