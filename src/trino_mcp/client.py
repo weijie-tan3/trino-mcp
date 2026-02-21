@@ -84,8 +84,13 @@ class TrinoClient:
             For "json": JSON string with 2-space indentation.
             For "csv": CSV string with header row and data rows.
             
+        Raises:
+            ValueError: If an unsupported format is specified.
+            
         Note: For programmatic use as a library, use execute_query_raw() to get native Python data structures.
         """
+        if format not in ("json", "csv"):
+            raise ValueError(f"Unsupported format: '{format}'. Supported formats are 'json' and 'csv'.")
         result = self.execute_query_raw(query)
         if format == "csv":
             return self._format_csv(result)

@@ -425,3 +425,11 @@ def test_execute_query_default_format_is_json(config, mock_connection):
     # Default should be JSON
     data = json.loads(result)
     assert data[0] == {"col1": "val1"}
+
+
+def test_execute_query_invalid_format(config, mock_connection):
+    """Test that an unsupported format raises ValueError."""
+    client = TrinoClient(config)
+
+    with pytest.raises(ValueError, match="Unsupported format"):
+        client.execute_query("SELECT 1", format="xml")
