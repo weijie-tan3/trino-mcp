@@ -1,6 +1,8 @@
 """Trino MCP Server - Main server implementation."""
 
+import json
 import logging
+import os
 import sys
 from typing import Annotated
 
@@ -122,17 +124,28 @@ def _parse_table_identifier(table: str, catalog: str, schema: str) -> tuple:
         return (catalog, schema, table)
 
 
-def _try_execute_query(query: str, format: str = "json") -> str:
+def _try_execute_query(query: str, format: str = "json", output_file: str = "") -> str:
     """Common function to execute a query.
     
     Args:
         query: The SQL query to execute
-        format: Output format - "json" (default) or "csv"
+        format: Output format - "json" (default) or "csv". Ignored when output_file is set.
+        output_file: If provided, write results as JSON directly to this file path.
+                     The data is written server-side and is NOT returned to the caller,
+                     preventing the AI from ever receiving the raw values.
         
     Returns:
-        The query results as a formatted string or error message
+        When output_file is set: a confirmation message with the row count.
+        Otherwise: the query results as a formatted string or error message.
     """
     try:
+        if output_file:
+            raw = client.execute_query_raw(query)
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump(raw, f, default=str, indent=2)
+            row_count = len(raw) if isinstance(raw, list) else 1
+            logger.debug(f"Query results written to {output_file} ({row_count} row(s))")
+            return f"Query results written to '{output_file}' ({row_count} row(s))."
         result = client.execute_query(query, format=format)
         logger.debug("Query executed successfully")
         return result
@@ -219,17 +232,21 @@ def describe_table(
 @mcp.tool()
 def execute_query_read_only(
     query: str = Field(description="The SQL query to execute (read-only)"),
-    format: Annotated[str, Field(description="Output format: 'json' (default) or 'csv'")] = "json",
+    format: Annotated[str, Field(description="Output format: 'json' (default) or 'csv'. Ignored when output_file is set.")] = "json",
+    output_file: Annotated[str, Field(description="File path to write results as JSON. When set, results are written directly to disk and are NOT returned to the AI, preventing hallucinated values.")] = "",
 ) -> str:
     """Execute a read-only SQL query and return the results.
     
     This tool is designed for read-only queries (SELECT, SHOW, DESCRIBE, EXPLAIN, etc.).
     It validates that the query is read-only before execution.
-    Results can be returned in JSON or CSV format for easy scripting.
+    Results can be returned in JSON or CSV format for easy scripting, or written
+    directly to a file (output_file) to prevent raw data from passing through the AI.
 
     Args:
         query: The SQL query to execute (must be read-only)
-        format: Output format - "json" (default) or "csv"
+        format: Output format - "json" (default) or "csv". Ignored when output_file is set.
+        output_file: File path to write results as JSON. When provided, results are written
+                     directly to disk and are NOT returned to the AI.
     """
     logger.info(f"Executing read-only query: {query[:100]}...")
     
@@ -244,23 +261,27 @@ def execute_query_read_only(
         )
     
     # Execute the query using the common function
-    return _try_execute_query(query, format=format)
+    return _try_execute_query(query, format=format, output_file=output_file)
 
 
 @mcp.tool()
 def execute_query(
     query: str = Field(description="The SQL query to execute"),
-    format: Annotated[str, Field(description="Output format: 'json' (default) or 'csv'")] = "json",
+    format: Annotated[str, Field(description="Output format: 'json' (default) or 'csv'. Ignored when output_file is set.")] = "json",
+    output_file: Annotated[str, Field(description="File path to write results as JSON. When set, results are written directly to disk and are NOT returned to the AI, preventing hallucinated values.")] = "",
 ) -> str:
     """Execute a SQL query and return the results.
     
     This tool can execute any SQL query including write operations (INSERT, UPDATE, DELETE, etc.).
     By default, write operations are disabled for security. Set ALLOW_WRITE_QUERIES=true to enable.
-    Results can be returned in JSON or CSV format for easy scripting.
+    Results can be returned in JSON or CSV format for easy scripting, or written
+    directly to a file (output_file) to prevent raw data from passing through the AI.
 
     Args:
         query: The SQL query to execute
-        format: Output format - "json" (default) or "csv"
+        format: Output format - "json" (default) or "csv". Ignored when output_file is set.
+        output_file: File path to write results as JSON. When provided, results are written
+                     directly to disk and are NOT returned to the AI.
     """
     logger.info(f"Executing query: {query[:100]}...")
     
@@ -275,7 +296,7 @@ def execute_query(
         )
     
     # Execute the query using the common function
-    return _try_execute_query(query, format=format)
+    return _try_execute_query(query, format=format, output_file=output_file)
 
 
 @mcp.tool()
