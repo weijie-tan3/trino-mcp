@@ -1,5 +1,6 @@
 """Tests for MCP server module."""
 
+import json
 import os
 from unittest.mock import MagicMock, patch
 
@@ -258,6 +259,54 @@ def test_execute_query_read_only_default_json_format(mock_client):
     result = execute_query_read_only("SELECT 1")
 
     mock_client.execute_query.assert_called_once_with("SELECT 1", format="json")
+
+
+@patch("trino_mcp.server.client")
+def test_execute_query_read_only_output_file(mock_client, tmp_path):
+    """Test execute_query_read_only writes results to file without returning data."""
+    from trino_mcp.server import execute_query_read_only
+
+    mock_client.execute_query_raw.return_value = [{"col": "value", "num": 42}]
+    output_file = str(tmp_path / "results.json")
+
+    result = execute_query_read_only("SELECT 1", output_file=output_file)
+
+    # Confirmation message returned, not the raw data
+    assert "results.json" in result
+    assert "1 row(s)" in result
+    assert "value" not in result
+    assert "42" not in result
+    # Data written directly to file
+    mock_client.execute_query_raw.assert_called_once_with("SELECT 1")
+    assert os.path.exists(output_file)
+    with open(output_file) as f:
+        data = json.load(f)
+    assert data == [{"col": "value", "num": 42}]
+
+
+@patch("trino_mcp.server.client")
+@patch("trino_mcp.server.config")
+def test_execute_query_output_file(mock_config, mock_client, tmp_path):
+    """Test execute_query writes results to file without returning data."""
+    from trino_mcp.server import execute_query
+
+    mock_config.allow_write_queries = True
+    mock_client.execute_query_raw.return_value = [{"col": "value", "num": 42}]
+    output_file = str(tmp_path / "results.json")
+
+    result = execute_query("SELECT 1", output_file=output_file)
+
+    # Confirmation message returned, not the raw data
+    assert "results.json" in result
+    assert "1 row(s)" in result
+    assert "value" not in result
+    assert "42" not in result
+    # Data written directly to file
+    mock_client.execute_query_raw.assert_called_once_with("SELECT 1")
+    assert os.path.exists(output_file)
+    with open(output_file) as f:
+        data = json.load(f)
+    assert data == [{"col": "value", "num": 42}]
 
 
 def test_parse_table_identifier_simple():
