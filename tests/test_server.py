@@ -220,6 +220,95 @@ def test_mcp_server_initialization():
     assert mcp.name == "Trino MCP Server"
 
 
+def test_parse_table_identifier_simple():
+    """Test _parse_table_identifier with a simple table name."""
+    from trino_mcp.server import _parse_table_identifier
+
+    cat, sch, tbl = _parse_table_identifier("my_table", "cat", "sch")
+    assert cat == "cat"
+    assert sch == "sch"
+    assert tbl == "my_table"
+
+
+def test_parse_table_identifier_fully_qualified():
+    """Test _parse_table_identifier with a fully qualified name (catalog.schema.table)."""
+    from trino_mcp.server import _parse_table_identifier
+
+    cat, sch, tbl = _parse_table_identifier("catalog1.schema1.table1", "", "")
+    assert cat == "catalog1"
+    assert sch == "schema1"
+    assert tbl == "table1"
+
+
+def test_parse_table_identifier_fully_qualified_with_existing_catalog_schema():
+    """Test _parse_table_identifier with a fully qualified name when catalog/schema are already provided."""
+    from trino_mcp.server import _parse_table_identifier
+
+    cat, sch, tbl = _parse_table_identifier("catalog1.schema1.table1", "existing_cat", "existing_sch")
+    assert cat == "existing_cat"
+    assert sch == "existing_sch"
+    assert tbl == "table1"
+
+
+def test_parse_table_identifier_schema_qualified():
+    """Test _parse_table_identifier with a schema-qualified name (schema.table)."""
+    from trino_mcp.server import _parse_table_identifier
+
+    cat, sch, tbl = _parse_table_identifier("schema1.table1", "", "")
+    assert cat == ""
+    assert sch == "schema1"
+    assert tbl == "table1"
+
+
+def test_parse_table_identifier_schema_qualified_with_existing_schema():
+    """Test _parse_table_identifier with a schema-qualified name when schema is already provided."""
+    from trino_mcp.server import _parse_table_identifier
+
+    cat, sch, tbl = _parse_table_identifier("schema1.table1", "cat", "existing_sch")
+    assert cat == "cat"
+    assert sch == "existing_sch"
+    assert tbl == "table1"
+
+
+@patch("trino_mcp.server.client")
+def test_describe_table_with_fully_qualified_name(mock_client):
+    """Test describe_table tool handles fully qualified table name."""
+    from trino_mcp.server import describe_table
+
+    mock_client.describe_table.return_value = '{"column": "id", "type": "integer"}'
+
+    result = describe_table("catalog1.schema1.table1", "", "")
+
+    assert "id" in result
+    mock_client.describe_table.assert_called_once_with("catalog1", "schema1", "table1")
+
+
+@patch("trino_mcp.server.client")
+def test_show_create_table_with_fully_qualified_name(mock_client):
+    """Test show_create_table tool handles fully qualified table name."""
+    from trino_mcp.server import show_create_table
+
+    mock_client.show_create_table.return_value = "CREATE TABLE test (id INT)"
+
+    result = show_create_table("catalog1.schema1.table1", "", "")
+
+    assert "CREATE TABLE" in result
+    mock_client.show_create_table.assert_called_once_with("catalog1", "schema1", "table1")
+
+
+@patch("trino_mcp.server.client")
+def test_get_table_stats_with_fully_qualified_name(mock_client):
+    """Test get_table_stats tool handles fully qualified table name."""
+    from trino_mcp.server import get_table_stats
+
+    mock_client.get_table_stats.return_value = '[{"column": "id", "size": "100"}]'
+
+    result = get_table_stats("catalog1.schema1.table1", "", "")
+
+    assert "100" in result
+    mock_client.get_table_stats.assert_called_once_with("catalog1", "schema1", "table1")
+
+
 def test_main_function_exists():
     """Test main function exists."""
     from trino_mcp.server import main
