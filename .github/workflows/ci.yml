@@ -30,14 +30,19 @@ jobs:
     
     - name: Run tests
       run: |
-        uv run pytest tests/ -v --cov=src/trino_mcp --cov-report=xml --cov-report=term
+        uv run pytest tests/ -v --cov=src/trino_mcp --cov-branch --cov-report=xml --cov-report=term --junitxml=junit.xml
     
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v5
       if: matrix.python-version == '3.12'
       with:
-        file: ./coverage.xml
-        fail_ci_if_error: false
+        token: ${{ secrets.CODECOV_TOKEN }}
+    
+    - name: Upload test results to Codecov
+      if: ${{ !cancelled() }}
+      uses: codecov/test-results-action@v1
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
   
   lint:
     runs-on: ubuntu-latest
@@ -92,29 +97,3 @@ jobs:
         uv venv
         uv pip install dist/*.whl
         uv run python -c "import trino_mcp; print(trino_mcp.__version__)"
-  
-  generate-docs:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-    
-    - name: Generate tool documentation
-      run: |
-        python3 scripts/generate_tool_docs.py
-    
-    - name: Upload tool documentation
-      uses: actions/upload-artifact@v4
-      with:
-        name: tool-documentation
-        path: |
-          TOOLS.md
-          tools.json
-        retention-days: 90

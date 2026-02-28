@@ -1,5 +1,6 @@
 """Tests for Trino client module."""
 
+import csv
 import json
 from unittest.mock import MagicMock, Mock, patch
 
@@ -47,8 +48,38 @@ def test_client_initialization(config, mock_connection):
     assert client.connection == mock_connection
 
 
+def test_execute_query_json_with_results(config, mock_connection):
+    """Test executing a query that returns results as JSON."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("col1",), ("col2",)]
+    mock_cursor.fetchall.return_value = [("val1", "val2"), ("val3", "val4")]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    result = client.execute_query_json("SELECT * FROM test")
+
+    data = json.loads(result)
+    assert len(data) == 2
+    assert data[0] == {"col1": "val1", "col2": "val2"}
+    assert data[1] == {"col1": "val3", "col2": "val4"}
+
+
+def test_execute_query_json_without_results(config, mock_connection):
+    """Test executing a DDL/DML query returns status as JSON."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = None
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    result = client.execute_query_json("CREATE TABLE test (id INT)")
+
+    data = json.loads(result)
+    assert data["status"] == "success"
+    assert "executed successfully" in data["message"]
+
+
 def test_execute_query_with_results(config, mock_connection):
-    """Test executing a query that returns results."""
+    """Test execute_query returns native Python data structures with results."""
     mock_cursor = MagicMock()
     mock_cursor.description = [("col1",), ("col2",)]
     mock_cursor.fetchall.return_value = [("val1", "val2"), ("val3", "val4")]
@@ -57,14 +88,14 @@ def test_execute_query_with_results(config, mock_connection):
     client = TrinoClient(config)
     result = client.execute_query("SELECT * FROM test")
 
-    data = json.loads(result)
-    assert len(data) == 2
-    assert data[0] == {"col1": "val1", "col2": "val2"}
-    assert data[1] == {"col1": "val3", "col2": "val4"}
+    assert isinstance(result, list)
+    assert len(result) == 2
+    assert result[0] == {"col1": "val1", "col2": "val2"}
+    assert result[1] == {"col1": "val3", "col2": "val4"}
 
 
 def test_execute_query_without_results(config, mock_connection):
-    """Test executing a query without results (DDL/DML)."""
+    """Test execute_query returns status dict for DDL/DML."""
     mock_cursor = MagicMock()
     mock_cursor.description = None
     mock_connection.cursor.return_value = mock_cursor
@@ -72,38 +103,6 @@ def test_execute_query_without_results(config, mock_connection):
     client = TrinoClient(config)
     result = client.execute_query("CREATE TABLE test (id INT)")
 
-    data = json.loads(result)
-    assert data["status"] == "success"
-    assert "executed successfully" in data["message"]
-
-
-def test_execute_query_raw_with_results(config, mock_connection):
-    """Test execute_query_raw returns native Python data structures with results."""
-    mock_cursor = MagicMock()
-    mock_cursor.description = [("col1",), ("col2",)]
-    mock_cursor.fetchall.return_value = [("val1", "val2"), ("val3", "val4")]
-    mock_connection.cursor.return_value = mock_cursor
-
-    client = TrinoClient(config)
-    result = client.execute_query_raw("SELECT * FROM test")
-
-    # Should return a list of dictionaries, not a JSON string
-    assert isinstance(result, list)
-    assert len(result) == 2
-    assert result[0] == {"col1": "val1", "col2": "val2"}
-    assert result[1] == {"col1": "val3", "col2": "val4"}
-
-
-def test_execute_query_raw_without_results(config, mock_connection):
-    """Test execute_query_raw returns native Python data structures without results."""
-    mock_cursor = MagicMock()
-    mock_cursor.description = None
-    mock_connection.cursor.return_value = mock_cursor
-
-    client = TrinoClient(config)
-    result = client.execute_query_raw("CREATE TABLE test (id INT)")
-
-    # Should return a dictionary, not a JSON string
     assert isinstance(result, dict)
     assert result["status"] == "success"
     assert "executed successfully" in result["message"]
@@ -450,3 +449,173 @@ def test_show_create_table_with_unexpected_response(config, mock_connection):
 
     with pytest.raises(RuntimeError, match="Expected list of results from SHOW CREATE TABLE"):
         client.show_create_table("catalog1", "schema1", "table1")
+
+
+def test_execute_query_json_returns_json_string(config, mock_connection):
+    """Test that execute_query_json returns a JSON string."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("col1",)]
+    mock_cursor.fetchall.return_value = [("val1",)]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    result = client.execute_query_json("SELECT 1")
+
+    data = json.loads(result)
+    assert data[0] == {"col1": "val1"}
+
+
+def test_execute_query_to_file_json(config, mock_connection, tmp_path):
+    """Test writing query results as JSON to a file."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("col1",), ("col2",)]
+    mock_cursor.fetchall.return_value = [("val1", "val2"), ("val3", "val4")]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    output_file = str(tmp_path / "results.json")
+    row_count = client.execute_query_to_file("SELECT * FROM test", output_file)
+
+    assert row_count == 2
+    with open(output_file) as f:
+        data = json.load(f)
+    assert len(data) == 2
+    assert data[0] == {"col1": "val1", "col2": "val2"}
+    assert data[1] == {"col1": "val3", "col2": "val4"}
+
+
+def test_execute_query_to_file_csv(config, mock_connection, tmp_path):
+    """Test writing query results as CSV to a file."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("col1",), ("col2",)]
+    mock_cursor.fetchall.return_value = [("val1", "val2"), ("val3", "val4")]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    output_file = str(tmp_path / "results.csv")
+    row_count = client.execute_query_to_file("SELECT * FROM test", output_file)
+
+    assert row_count == 2
+    with open(output_file) as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+    assert len(rows) == 2
+    assert rows[0] == {"col1": "val1", "col2": "val2"}
+    assert rows[1] == {"col1": "val3", "col2": "val4"}
+
+
+def test_execute_query_to_file_csv_special_characters(config, mock_connection, tmp_path):
+    """Test CSV file output properly handles special characters."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("name",), ("value",)]
+    mock_cursor.fetchall.return_value = [
+        ('hello, world', 'has "quotes"'),
+        ("line1\nline2", "simple"),
+    ]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    output_file = str(tmp_path / "results.csv")
+    row_count = client.execute_query_to_file("SELECT * FROM test", output_file)
+
+    assert row_count == 2
+    with open(output_file, newline="") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+    assert rows[0]["name"] == "hello, world"
+    assert rows[0]["value"] == 'has "quotes"'
+    assert rows[1]["name"] == "line1\nline2"
+
+
+def test_execute_query_to_file_csv_no_results(config, mock_connection, tmp_path):
+    """Test writing DDL/DML (no output) results to CSV file."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = None
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    output_file = str(tmp_path / "results.csv")
+    row_count = client.execute_query_to_file("CREATE TABLE test (id INT)", output_file)
+
+    assert row_count == 1
+    with open(output_file) as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+    assert len(rows) == 1
+    assert rows[0]["status"] == "success"
+
+
+def test_execute_query_to_file_json_no_results(config, mock_connection, tmp_path):
+    """Test writing DDL/DML (no output) results to JSON file."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = None
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    output_file = str(tmp_path / "results.json")
+    row_count = client.execute_query_to_file("CREATE TABLE test (id INT)", output_file)
+
+    assert row_count == 1
+    with open(output_file) as f:
+        data = json.load(f)
+    assert data["status"] == "success"
+
+
+def test_execute_query_to_file_csv_empty_results(config, mock_connection, tmp_path):
+    """Test writing empty query results to CSV file."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("col1",), ("col2",)]
+    mock_cursor.fetchall.return_value = []
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    output_file = str(tmp_path / "results.csv")
+    row_count = client.execute_query_to_file("SELECT * FROM empty_table", output_file)
+
+    assert row_count == 0
+    with open(output_file) as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+    # Header only, no data rows
+    assert len(rows) == 1
+    assert rows[0] == ["col1", "col2"]
+
+
+def test_describe_table_missing_catalog_error(mock_connection):
+    """Test describe_table raises error when catalog is not specified."""
+    config = TrinoConfig(host="localhost", port=8080, user="trino")
+    client = TrinoClient(config)
+
+    with pytest.raises(ValueError, match="Both catalog and schema must be specified"):
+        client.describe_table("", "", "table1")
+
+
+def test_get_table_stats_missing_catalog_error(mock_connection):
+    """Test get_table_stats raises error when catalog is not specified."""
+    config = TrinoConfig(host="localhost", port=8080, user="trino")
+    client = TrinoClient(config)
+
+    with pytest.raises(ValueError, match="Both catalog and schema must be specified"):
+        client.get_table_stats("", "", "table1")
+
+
+def test_show_create_table_missing_catalog_error(mock_connection):
+    """Test show_create_table raises error when catalog is not specified."""
+    config = TrinoConfig(host="localhost", port=8080, user="trino")
+    client = TrinoClient(config)
+
+    with pytest.raises(ValueError, match="Both catalog and schema must be specified"):
+        client.show_create_table("", "", "table1")
+
+
+def test_show_create_table_empty_result(config, mock_connection):
+    """Test show_create_table returns empty string when data is empty."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("Create Table",)]
+    mock_cursor.fetchall.return_value = []
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    result = client.show_create_table("catalog1", "schema1", "table1")
+
+    assert result == ""

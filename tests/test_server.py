@@ -90,12 +90,12 @@ def test_execute_query_read_only_tool(mock_client):
     """Test execute_query_read_only tool with SELECT query."""
     from trino_mcp.server import execute_query_read_only
 
-    mock_client.execute_query.return_value = '[{"col": "value"}]'
+    mock_client.execute_query_json.return_value = '[{"col": "value"}]'
 
     result = execute_query_read_only("SELECT 1")
 
     assert "value" in result
-    mock_client.execute_query.assert_called_once_with("SELECT 1")
+    mock_client.execute_query_json.assert_called_once_with("SELECT 1")
 
 
 @pytest.mark.parametrize(
@@ -124,7 +124,7 @@ def test_execute_query_read_only_blocks_write_queries(mock_client, query):
     assert "does not appear to be read-only" in result
     assert "execute_query" in result
     # Client should not be called for non-read-only queries
-    mock_client.execute_query.assert_not_called()
+    mock_client.execute_query_json.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -144,12 +144,12 @@ def test_execute_query_read_only_allows_read_queries(mock_client, query, expecte
 
     assert _is_read_only_query(query)
 
-    mock_client.execute_query.return_value = f'[{{"{expected_content}": "test"}}]'
+    mock_client.execute_query_json.return_value = f'[{{"{expected_content}": "test"}}]'
 
     result = execute_query_read_only(query)
 
     assert "test" in result
-    mock_client.execute_query.assert_called_once_with(query)
+    mock_client.execute_query_json.assert_called_once_with(query)
 
 
 @patch("trino_mcp.server.client")
@@ -166,7 +166,7 @@ def test_execute_query_tool_write_disabled(mock_config, mock_client):
     assert "ALLOW_WRITE_QUERIES=true" in result
     assert "execute_query_read_only" in result
     # Client should not be called when write queries are disabled
-    mock_client.execute_query.assert_not_called()
+    mock_client.execute_query_json.assert_not_called()
 
 
 @patch("trino_mcp.server.client")
@@ -176,12 +176,12 @@ def test_execute_query_tool_write_enabled(mock_config, mock_client):
     from trino_mcp.server import execute_query
 
     mock_config.allow_write_queries = True
-    mock_client.execute_query.return_value = '[{"col": "value"}]'
+    mock_client.execute_query_json.return_value = '[{"col": "value"}]'
 
     result = execute_query("SELECT 1")
 
     assert "value" in result
-    mock_client.execute_query.assert_called_once_with("SELECT 1")
+    mock_client.execute_query_json.assert_called_once_with("SELECT 1")
 
 
 @patch("trino_mcp.server.client")
@@ -218,6 +218,66 @@ def test_mcp_server_initialization():
 
     assert mcp is not None
     assert mcp.name == "Trino MCP Server"
+
+
+@patch("trino_mcp.server.client")
+def test_execute_query_read_only_output_file_csv(mock_client):
+    """Test execute_query_read_only with .csv output_file delegates to execute_query_to_file."""
+    from trino_mcp.server import execute_query_read_only
+
+    mock_client.execute_query_to_file.return_value = 2
+
+    result = execute_query_read_only("SELECT 1", output_file="/tmp/results.csv")
+
+    assert "results.csv" in result
+    assert "2 row(s)" in result
+    mock_client.execute_query_to_file.assert_called_once_with("SELECT 1", "/tmp/results.csv")
+
+
+@patch("trino_mcp.server.client")
+@patch("trino_mcp.server.config")
+def test_execute_query_output_file_csv(mock_config, mock_client):
+    """Test execute_query with .csv output_file delegates to execute_query_to_file."""
+    from trino_mcp.server import execute_query
+
+    mock_config.allow_write_queries = True
+    mock_client.execute_query_to_file.return_value = 2
+
+    result = execute_query("SELECT 1", output_file="/tmp/results.csv")
+
+    assert "results.csv" in result
+    assert "2 row(s)" in result
+    mock_client.execute_query_to_file.assert_called_once_with("SELECT 1", "/tmp/results.csv")
+
+
+@patch("trino_mcp.server.client")
+def test_execute_query_read_only_output_file(mock_client):
+    """Test execute_query_read_only with output_file delegates to execute_query_to_file."""
+    from trino_mcp.server import execute_query_read_only
+
+    mock_client.execute_query_to_file.return_value = 5
+
+    result = execute_query_read_only("SELECT 1", output_file="/tmp/results.json")
+
+    assert "results.json" in result
+    assert "5 row(s)" in result
+    mock_client.execute_query_to_file.assert_called_once_with("SELECT 1", "/tmp/results.json")
+
+
+@patch("trino_mcp.server.client")
+@patch("trino_mcp.server.config")
+def test_execute_query_output_file(mock_config, mock_client):
+    """Test execute_query with output_file delegates to execute_query_to_file."""
+    from trino_mcp.server import execute_query
+
+    mock_config.allow_write_queries = True
+    mock_client.execute_query_to_file.return_value = 5
+
+    result = execute_query("SELECT 1", output_file="/tmp/results.json")
+
+    assert "results.json" in result
+    assert "5 row(s)" in result
+    mock_client.execute_query_to_file.assert_called_once_with("SELECT 1", "/tmp/results.json")
 
 
 def test_parse_table_identifier_simple():
@@ -314,3 +374,129 @@ def test_main_function_exists():
     from trino_mcp.server import main
 
     assert callable(main)
+
+
+def test_is_read_only_query_parse_failure():
+    """Test _is_read_only_query returns False when SQL parsing fails."""
+    from trino_mcp.server import _is_read_only_query
+
+    # Completely garbled SQL that sqlglot cannot parse
+    assert _is_read_only_query("THIS IS NOT VALID SQL @@@ !!!") is False
+
+
+def test_is_read_only_query_explain_analyze_blocked():
+    """Test _is_read_only_query blocks EXPLAIN ANALYZE (it executes the query)."""
+    from trino_mcp.server import _is_read_only_query
+
+    assert _is_read_only_query("EXPLAIN ANALYZE SELECT * FROM t") is False
+
+
+def test_is_read_only_query_unknown_command_blocked():
+    """Test _is_read_only_query blocks unknown Command expressions."""
+    from trino_mcp.server import _is_read_only_query
+
+    # CALL is a command that may have side effects
+    assert _is_read_only_query("CALL system.sync_partition_metadata('cat','sch','tbl')") is False
+
+
+@patch("trino_mcp.server.client")
+def test_list_schemas_error(mock_client):
+    """Test list_schemas tool with error."""
+    from trino_mcp.server import list_schemas
+
+    mock_client.list_schemas.side_effect = Exception("Connection failed")
+
+    result = list_schemas("test_catalog")
+
+    assert "Error listing schemas" in result
+    assert "Connection failed" in result
+
+
+@patch("trino_mcp.server.client")
+def test_list_tables_error(mock_client):
+    """Test list_tables tool with error."""
+    from trino_mcp.server import list_tables
+
+    mock_client.list_tables.side_effect = Exception("Connection failed")
+
+    result = list_tables("catalog1", "schema1")
+
+    assert "Error listing tables" in result
+    assert "Connection failed" in result
+
+
+@patch("trino_mcp.server.client")
+def test_describe_table_error(mock_client):
+    """Test describe_table tool with error."""
+    from trino_mcp.server import describe_table
+
+    mock_client.describe_table.side_effect = Exception("Table not found")
+
+    result = describe_table("table1", "catalog1", "schema1")
+
+    assert "Error describing table" in result
+    assert "Table not found" in result
+
+
+@patch("trino_mcp.server.client")
+def test_show_create_table_error(mock_client):
+    """Test show_create_table tool with error."""
+    from trino_mcp.server import show_create_table
+
+    mock_client.show_create_table.side_effect = Exception("Table not found")
+
+    result = show_create_table("table1", "catalog1", "schema1")
+
+    assert "Error showing CREATE TABLE" in result
+    assert "Table not found" in result
+
+
+@patch("trino_mcp.server.client")
+def test_get_table_stats_error(mock_client):
+    """Test get_table_stats tool with error."""
+    from trino_mcp.server import get_table_stats
+
+    mock_client.get_table_stats.side_effect = Exception("Stats unavailable")
+
+    result = get_table_stats("table1", "catalog1", "schema1")
+
+    assert "Error getting table stats" in result
+    assert "Stats unavailable" in result
+
+
+@patch("trino_mcp.server.client")
+def test_execute_query_read_only_query_error(mock_client):
+    """Test execute_query_read_only tool when query execution raises an exception."""
+    from trino_mcp.server import execute_query_read_only
+
+    mock_client.execute_query_json.side_effect = Exception("Timeout")
+
+    result = execute_query_read_only("SELECT 1")
+
+    assert "Error executing query" in result
+    assert "Timeout" in result
+
+
+@patch("trino_mcp.server.client")
+@patch("trino_mcp.server.config")
+def test_execute_query_query_error(mock_config, mock_client):
+    """Test execute_query tool when query execution raises an exception."""
+    from trino_mcp.server import execute_query
+
+    mock_config.allow_write_queries = True
+    mock_client.execute_query_json.side_effect = Exception("Timeout")
+
+    result = execute_query("INSERT INTO t VALUES (1)")
+
+    assert "Error executing query" in result
+    assert "Timeout" in result
+
+
+@patch("trino_mcp.server.mcp")
+def test_main_calls_mcp_run(mock_mcp):
+    """Test main() calls mcp.run()."""
+    from trino_mcp.server import main
+
+    main()
+
+    mock_mcp.run.assert_called_once()
