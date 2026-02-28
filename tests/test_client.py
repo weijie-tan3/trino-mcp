@@ -579,3 +579,43 @@ def test_execute_query_to_file_csv_empty_results(config, mock_connection, tmp_pa
     # Header only, no data rows
     assert len(rows) == 1
     assert rows[0] == ["col1", "col2"]
+
+
+def test_describe_table_missing_catalog_error(mock_connection):
+    """Test describe_table raises error when catalog is not specified."""
+    config = TrinoConfig(host="localhost", port=8080, user="trino")
+    client = TrinoClient(config)
+
+    with pytest.raises(ValueError, match="Both catalog and schema must be specified"):
+        client.describe_table("", "", "table1")
+
+
+def test_get_table_stats_missing_catalog_error(mock_connection):
+    """Test get_table_stats raises error when catalog is not specified."""
+    config = TrinoConfig(host="localhost", port=8080, user="trino")
+    client = TrinoClient(config)
+
+    with pytest.raises(ValueError, match="Both catalog and schema must be specified"):
+        client.get_table_stats("", "", "table1")
+
+
+def test_show_create_table_missing_catalog_error(mock_connection):
+    """Test show_create_table raises error when catalog is not specified."""
+    config = TrinoConfig(host="localhost", port=8080, user="trino")
+    client = TrinoClient(config)
+
+    with pytest.raises(ValueError, match="Both catalog and schema must be specified"):
+        client.show_create_table("", "", "table1")
+
+
+def test_show_create_table_empty_result(config, mock_connection):
+    """Test show_create_table returns empty string when data is empty."""
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("Create Table",)]
+    mock_cursor.fetchall.return_value = []
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    result = client.show_create_table("catalog1", "schema1", "table1")
+
+    assert result == ""
