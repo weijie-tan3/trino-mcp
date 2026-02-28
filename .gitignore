@@ -36,3 +36,6 @@ coverage.xml
 # Generated docs (available as CI artifacts)
 TOOLS.md
 tools.json
+
+# Auto-generated version file (hatch-vcs)
+src/trino_mcp/_version.py

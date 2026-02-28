@@ -1,7 +1,10 @@
 name: Publish to PyPI
 
-# Trigger workflow when a release is published on GitHub
+# Trigger on version tags or GitHub releases
 on:
+  push:
+    tags:
+      - 'v*'
   release:
     types: [published]
 
@@ -15,6 +18,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # full history needed for hatch-vcs version derivation
 
     - name: Set up Python
       uses: actions/setup-python@v5
