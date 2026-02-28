@@ -196,15 +196,16 @@ def load_config() -> TrinoConfig:
             watermark_config = json.loads(custom_watermark_raw)
             if not isinstance(watermark_config, dict):
                 raise ValueError("TRINO_MCP_CUSTOM_WATERMARK must be a JSON object")
-            custom_watermark = {}
             for key, env_var_name in watermark_config.items():
                 if not isinstance(env_var_name, str):
                     raise ValueError(
                         f"TRINO_MCP_CUSTOM_WATERMARK values must be strings "
                         f"(environment variable names), got {type(env_var_name).__name__} for key '{key}'"
                     )
-                env_value = os.getenv(env_var_name, "")
-                custom_watermark[key] = env_value
+            custom_watermark = {
+                key: os.getenv(env_var_name, "")
+                for key, env_var_name in watermark_config.items()
+            }
         except json.JSONDecodeError as e:
             raise ValueError(
                 f"TRINO_MCP_CUSTOM_WATERMARK must be valid JSON: {e}"

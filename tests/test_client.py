@@ -336,7 +336,7 @@ def test_watermark_with_multiple_custom_keys(mock_connection):
     client = TrinoClient(config)
     client.execute_query("SELECT 1")
 
-    expected_query = f"-- trino, trino-mcp v{__version__}, team: data-eng, env: prod --\nSELECT 1"
+    expected_query = f"-- trino, trino-mcp v{__version__}, env: prod, team: data-eng --\nSELECT 1"
     mock_cursor.execute.assert_called_with(expected_query)
 
 

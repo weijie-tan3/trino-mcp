@@ -44,7 +44,7 @@ class TrinoClient:
         if self.config.custom_watermark:
             custom_parts = ", ".join(
                 f"{key}: {value}"
-                for key, value in self.config.custom_watermark.items()
+                for key, value in sorted(self.config.custom_watermark.items())
             )
             watermark = f"-- {self.config.user}, trino-mcp v{__version__}, {custom_parts} --\n"
         return watermark + query
