@@ -40,13 +40,13 @@ class TrinoClient:
         Returns:
             The query with watermark comment prepended
         """
-        watermark = f"-- {self.config.user}, trino-mcp v{__version__} --\n"
+        watermark_data: dict = {
+            "trino_mcp_version": __version__,
+            "user": self.config.user,
+        }
         if self.config.custom_watermark:
-            custom_parts = ", ".join(
-                f"{key}: {value}"
-                for key, value in sorted(self.config.custom_watermark.items())
-            )
-            watermark = f"-- {self.config.user}, trino-mcp v{__version__}, {custom_parts} --\n"
+            watermark_data.update(sorted(self.config.custom_watermark.items()))
+        watermark = f"-- {json.dumps(watermark_data)} --\n"
         return watermark + query
 
     def execute_query_raw(self, query: str) -> Union[List[Dict[str, Any]], Dict[str, Any]]:

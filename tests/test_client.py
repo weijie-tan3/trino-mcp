@@ -10,6 +10,14 @@ from trino_mcp.client import TrinoClient
 from trino_mcp.config import TrinoConfig
 
 
+def _expected_watermark(user: str = "trino", **custom) -> str:
+    """Build expected JSON watermark comment."""
+    data = {"trino_mcp_version": __version__, "user": user}
+    if custom:
+        data.update(sorted(custom.items()))
+    return f"-- {json.dumps(data)} --"
+
+
 @pytest.fixture
 def config():
     """Create a test configuration."""
@@ -126,7 +134,7 @@ def test_list_schemas(config, mock_connection):
 
     assert schemas == ["schema1", "schema2"]
     mock_cursor.execute.assert_called_with(
-        f"-- trino, trino-mcp v{__version__} --\nSHOW SCHEMAS FROM test_catalog"
+        f"{_expected_watermark()}\nSHOW SCHEMAS FROM test_catalog"
     )
 
 
@@ -142,7 +150,7 @@ def test_list_schemas_with_default(config, mock_connection):
 
     assert schemas == ["schema1"]
     mock_cursor.execute.assert_called_with(
-        f"-- trino, trino-mcp v{__version__} --\nSHOW SCHEMAS FROM test_catalog"
+        f"{_expected_watermark()}\nSHOW SCHEMAS FROM test_catalog"
     )
 
 
@@ -167,7 +175,7 @@ def test_list_tables(config, mock_connection):
 
     assert tables == ["table1", "table2"]
     mock_cursor.execute.assert_called_with(
-        f"-- trino, trino-mcp v{__version__} --\nSHOW TABLES FROM catalog1.schema1"
+        f"{_expected_watermark()}\nSHOW TABLES FROM catalog1.schema1"
     )
 
 
@@ -183,7 +191,7 @@ def test_list_tables_with_defaults(config, mock_connection):
 
     assert tables == ["table1"]
     mock_cursor.execute.assert_called_with(
-        f"-- trino, trino-mcp v{__version__} --\nSHOW TABLES FROM test_catalog.test_schema"
+        f"{_expected_watermark()}\nSHOW TABLES FROM test_catalog.test_schema"
     )
 
 
@@ -211,7 +219,7 @@ def test_describe_table(config, mock_connection):
     data = json.loads(result)
     assert len(data) == 2
     mock_cursor.execute.assert_called_with(
-        f"-- trino, trino-mcp v{__version__} --\nDESCRIBE catalog1.schema1.table1"
+        f"{_expected_watermark()}\nDESCRIBE catalog1.schema1.table1"
     )
 
 
@@ -227,7 +235,7 @@ def test_show_create_table(config, mock_connection):
 
     assert result == "CREATE TABLE test (id INT)"
     mock_cursor.execute.assert_called_with(
-        f"-- trino, trino-mcp v{__version__} --\nSHOW CREATE TABLE catalog1.schema1.table1"
+        f"{_expected_watermark()}\nSHOW CREATE TABLE catalog1.schema1.table1"
     )
 
 
@@ -244,7 +252,7 @@ def test_get_table_stats(config, mock_connection):
     data = json.loads(result)
     assert len(data) == 2
     mock_cursor.execute.assert_called_with(
-        f"-- trino, trino-mcp v{__version__} --\nSHOW STATS FOR catalog1.schema1.table1"
+        f"{_expected_watermark()}\nSHOW STATS FOR catalog1.schema1.table1"
     )
 
 
@@ -261,12 +269,12 @@ def test_watermark_addition(config, mock_connection):
     result = client.execute_query("SELECT 1")
 
     # Verify the watermark was added
-    expected_query = f"-- trino, trino-mcp v{__version__} --\nSELECT 1"
+    expected_query = f"{_expected_watermark()}\nSELECT 1"
     mock_cursor.execute.assert_called_with(expected_query)
 
-    # Verify the watermark includes the username
+    # Verify the watermark is a JSON comment
     call_args = mock_cursor.execute.call_args[0][0]
-    assert call_args.startswith(f"-- trino, trino-mcp v{__version__} --\n")
+    assert call_args.startswith(f"{_expected_watermark()}\n")
 
 
 def test_watermark_with_different_username(mock_connection):
@@ -290,7 +298,7 @@ def test_watermark_with_different_username(mock_connection):
     result = client.execute_query("SELECT 1")
 
     # Verify the watermark includes the correct username
-    expected_query = f"-- custom_user, trino-mcp v{__version__} --\nSELECT 1"
+    expected_query = f"{_expected_watermark(user='custom_user')}\nSELECT 1"
     mock_cursor.execute.assert_called_with(expected_query)
 
 
@@ -313,7 +321,7 @@ def test_watermark_with_custom_watermark(mock_connection):
     client = TrinoClient(config)
     client.execute_query("SELECT 1")
 
-    expected_query = f"-- trino, trino-mcp v{__version__}, wtm_key: my-app --\nSELECT 1"
+    expected_query = f"{_expected_watermark(wtm_key='my-app')}\nSELECT 1"
     mock_cursor.execute.assert_called_with(expected_query)
 
 
@@ -336,7 +344,7 @@ def test_watermark_with_multiple_custom_keys(mock_connection):
     client = TrinoClient(config)
     client.execute_query("SELECT 1")
 
-    expected_query = f"-- trino, trino-mcp v{__version__}, env: prod, team: data-eng --\nSELECT 1"
+    expected_query = f"{_expected_watermark(env='prod', team='data-eng')}\nSELECT 1"
     mock_cursor.execute.assert_called_with(expected_query)
 
 
@@ -359,7 +367,7 @@ def test_watermark_without_custom_watermark(mock_connection):
     client = TrinoClient(config)
     client.execute_query("SELECT 1")
 
-    expected_query = f"-- trino, trino-mcp v{__version__} --\nSELECT 1"
+    expected_query = f"{_expected_watermark()}\nSELECT 1"
     mock_cursor.execute.assert_called_with(expected_query)
 
 
