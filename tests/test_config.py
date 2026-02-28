@@ -337,3 +337,108 @@ def test_load_config_azure_spn_no_creds_all_fail(mock_cli_cls, mock_default_cls)
 
     with pytest.raises(ValueError, match="Failed to acquire Azure token"):
         load_config()
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "TRINO_MCP_CUSTOM_WATERMARK": '{"wtm_key": "MY_APP_ID"}',
+        "MY_APP_ID": "my-cool-app",
+    },
+)
+def test_load_config_custom_watermark():
+    """Test loading configuration with custom watermark."""
+    config = load_config()
+
+    assert config.custom_watermark == {"wtm_key": "my-cool-app"}
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "TRINO_MCP_CUSTOM_WATERMARK": '{"key1": "ENV_VAR1", "key2": "ENV_VAR2"}',
+        "ENV_VAR1": "value1",
+        "ENV_VAR2": "value2",
+    },
+)
+def test_load_config_custom_watermark_multiple_keys():
+    """Test loading configuration with multiple custom watermark keys."""
+    config = load_config()
+
+    assert config.custom_watermark == {"key1": "value1", "key2": "value2"}
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "TRINO_MCP_CUSTOM_WATERMARK": '{"wtm_key": "MISSING_ENV_VAR"}',
+    },
+    clear=True,
+)
+def test_load_config_custom_watermark_missing_env_var():
+    """Test custom watermark with missing environment variable defaults to empty string."""
+    config = load_config()
+
+    assert config.custom_watermark == {"wtm_key": ""}
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "TRINO_MCP_CUSTOM_WATERMARK": "not-valid-json",
+    },
+)
+def test_load_config_custom_watermark_invalid_json():
+    """Test custom watermark with invalid JSON raises error."""
+    with pytest.raises(ValueError, match="TRINO_MCP_CUSTOM_WATERMARK must be valid JSON"):
+        load_config()
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+    },
+)
+def test_load_config_no_custom_watermark():
+    """Test loading configuration without custom watermark."""
+    config = load_config()
+
+    assert config.custom_watermark is None
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "TRINO_MCP_CUSTOM_WATERMARK": '{"key\\ninjected": "MY_VAR"}',
+        "MY_VAR": "value\ninjected",
+    },
+)
+def test_load_config_custom_watermark_strips_newlines():
+    """Test that newlines are stripped from custom watermark keys and values."""
+    config = load_config()
+
+    assert config.custom_watermark == {"keyinjected": "valueinjected"}
