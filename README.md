@@ -299,7 +299,7 @@ pkill -f trino-mcp
 
 ## License
 
-MIT License - see LICENSE file for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## Contributing
 
@@ -307,6 +307,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 
 For issues and questions:
-- Open an issue on GitHub
+- [Open an issue on GitHub](https://github.com/weijie-tan3/trino-mcp/issues)
 - Check Trino documentation: https://trino.io/docs/
 - Check MCP documentation: https://modelcontextprotocol.io/

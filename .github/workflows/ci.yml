@@ -30,14 +30,13 @@ jobs:
     
     - name: Run tests
       run: |
-        uv run pytest tests/ -v --cov=src/trino_mcp --cov-report=xml --cov-report=term
+        uv run pytest tests/ -v --cov=src/trino_mcp --cov-branch --cov-report=xml --cov-report=term
     
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v5
       if: matrix.python-version == '3.12'
       with:
-        file: ./coverage.xml
-        fail_ci_if_error: false
+        token: ${{ secrets.CODECOV_TOKEN }}
   
   lint:
     runs-on: ubuntu-latest
