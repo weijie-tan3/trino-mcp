@@ -1,6 +1,9 @@
 """Trino MCP Server - A simple Model Context Protocol server for Trino."""
 
-__version__ = "0.1.0"
+try:
+    from ._version import __version__
+except ImportError:
+    __version__ = "0.0.0+unknown"  # fallback for editable installs without build
 
 # Export main classes for library usage
 from .client import TrinoClient
