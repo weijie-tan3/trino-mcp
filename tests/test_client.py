@@ -382,6 +382,7 @@ def test_watermark_custom_values_with_newlines_do_not_escape_comment(mock_connec
     }
     with patch.dict("os.environ", env):
         from trino_mcp.config import load_config
+
         config = load_config()
 
     mock_cursor = MagicMock()
@@ -411,7 +412,9 @@ def test_list_catalogs_with_unexpected_response(config, mock_connection):
 
     client = TrinoClient(config)
 
-    with pytest.raises(RuntimeError, match="Expected list of results from SHOW CATALOGS"):
+    with pytest.raises(
+        RuntimeError, match="Expected list of results from SHOW CATALOGS"
+    ):
         client.list_catalogs()
 
 
@@ -423,7 +426,9 @@ def test_list_schemas_with_unexpected_response(config, mock_connection):
 
     client = TrinoClient(config)
 
-    with pytest.raises(RuntimeError, match="Expected list of results from SHOW SCHEMAS"):
+    with pytest.raises(
+        RuntimeError, match="Expected list of results from SHOW SCHEMAS"
+    ):
         client.list_schemas("test_catalog")
 
 
@@ -447,7 +452,9 @@ def test_show_create_table_with_unexpected_response(config, mock_connection):
 
     client = TrinoClient(config)
 
-    with pytest.raises(RuntimeError, match="Expected list of results from SHOW CREATE TABLE"):
+    with pytest.raises(
+        RuntimeError, match="Expected list of results from SHOW CREATE TABLE"
+    ):
         client.show_create_table("catalog1", "schema1", "table1")
 
 
@@ -504,12 +511,14 @@ def test_execute_query_to_file_csv(config, mock_connection, tmp_path):
     assert rows[1] == {"col1": "val3", "col2": "val4"}
 
 
-def test_execute_query_to_file_csv_special_characters(config, mock_connection, tmp_path):
+def test_execute_query_to_file_csv_special_characters(
+    config, mock_connection, tmp_path
+):
     """Test CSV file output properly handles special characters."""
     mock_cursor = MagicMock()
     mock_cursor.description = [("name",), ("value",)]
     mock_cursor.fetchall.return_value = [
-        ('hello, world', 'has "quotes"'),
+        ("hello, world", 'has "quotes"'),
         ("line1\nline2", "simple"),
     ]
     mock_connection.cursor.return_value = mock_cursor

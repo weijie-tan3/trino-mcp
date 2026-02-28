@@ -109,7 +109,7 @@ def test_execute_query_read_only_tool(mock_client):
         "ALTER TABLE test ADD COLUMN name VARCHAR",
         "TRUNCATE TABLE test",
         "MERGE INTO table1 USING table2 ON table1.id = table2.id",
-        "WITH cte AS (DELETE FROM table RETURNING *) SELECT * FROM cte"
+        "WITH cte AS (DELETE FROM table RETURNING *) SELECT * FROM cte",
     ],
 )
 @patch("trino_mcp.server.client")
@@ -138,7 +138,9 @@ def test_execute_query_read_only_blocks_write_queries(mock_client, query):
     ],
 )
 @patch("trino_mcp.server.client")
-def test_execute_query_read_only_allows_read_queries(mock_client, query, expected_content):
+def test_execute_query_read_only_allows_read_queries(
+    mock_client, query, expected_content
+):
     """Test execute_query_read_only tool allows read-only queries."""
     from trino_mcp.server import execute_query_read_only, _is_read_only_query
 
@@ -231,7 +233,9 @@ def test_execute_query_read_only_output_file_csv(mock_client):
 
     assert "results.csv" in result
     assert "2 row(s)" in result
-    mock_client.execute_query_to_file.assert_called_once_with("SELECT 1", "/tmp/results.csv")
+    mock_client.execute_query_to_file.assert_called_once_with(
+        "SELECT 1", "/tmp/results.csv"
+    )
 
 
 @patch("trino_mcp.server.client")
@@ -247,7 +251,9 @@ def test_execute_query_output_file_csv(mock_config, mock_client):
 
     assert "results.csv" in result
     assert "2 row(s)" in result
-    mock_client.execute_query_to_file.assert_called_once_with("SELECT 1", "/tmp/results.csv")
+    mock_client.execute_query_to_file.assert_called_once_with(
+        "SELECT 1", "/tmp/results.csv"
+    )
 
 
 @patch("trino_mcp.server.client")
@@ -261,7 +267,9 @@ def test_execute_query_read_only_output_file(mock_client):
 
     assert "results.json" in result
     assert "5 row(s)" in result
-    mock_client.execute_query_to_file.assert_called_once_with("SELECT 1", "/tmp/results.json")
+    mock_client.execute_query_to_file.assert_called_once_with(
+        "SELECT 1", "/tmp/results.json"
+    )
 
 
 @patch("trino_mcp.server.client")
@@ -277,7 +285,9 @@ def test_execute_query_output_file(mock_config, mock_client):
 
     assert "results.json" in result
     assert "5 row(s)" in result
-    mock_client.execute_query_to_file.assert_called_once_with("SELECT 1", "/tmp/results.json")
+    mock_client.execute_query_to_file.assert_called_once_with(
+        "SELECT 1", "/tmp/results.json"
+    )
 
 
 def test_parse_table_identifier_simple():
@@ -304,7 +314,9 @@ def test_parse_table_identifier_fully_qualified_with_existing_catalog_schema():
     """Test _parse_table_identifier with a fully qualified name when catalog/schema are already provided."""
     from trino_mcp.server import _parse_table_identifier
 
-    cat, sch, tbl = _parse_table_identifier("catalog1.schema1.table1", "existing_cat", "existing_sch")
+    cat, sch, tbl = _parse_table_identifier(
+        "catalog1.schema1.table1", "existing_cat", "existing_sch"
+    )
     assert cat == "existing_cat"
     assert sch == "existing_sch"
     assert tbl == "table1"
@@ -353,7 +365,9 @@ def test_show_create_table_with_fully_qualified_name(mock_client):
     result = show_create_table("catalog1.schema1.table1", "", "")
 
     assert "CREATE TABLE" in result
-    mock_client.show_create_table.assert_called_once_with("catalog1", "schema1", "table1")
+    mock_client.show_create_table.assert_called_once_with(
+        "catalog1", "schema1", "table1"
+    )
 
 
 @patch("trino_mcp.server.client")
@@ -396,7 +410,10 @@ def test_is_read_only_query_unknown_command_blocked():
     from trino_mcp.server import _is_read_only_query
 
     # CALL is a command that may have side effects
-    assert _is_read_only_query("CALL system.sync_partition_metadata('cat','sch','tbl')") is False
+    assert (
+        _is_read_only_query("CALL system.sync_partition_metadata('cat','sch','tbl')")
+        is False
+    )
 
 
 @patch("trino_mcp.server.client")

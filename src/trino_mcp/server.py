@@ -6,8 +6,20 @@ from typing import Annotated
 
 import sqlglot
 from sqlglot.expressions import (
-    Insert, Update, Delete, Merge, Create, Drop, Alter,
-    Grant, Revoke, Analyze, Refresh, Command, Describe, TruncateTable
+    Insert,
+    Update,
+    Delete,
+    Merge,
+    Create,
+    Drop,
+    Alter,
+    Grant,
+    Revoke,
+    Analyze,
+    Refresh,
+    Command,
+    Describe,
+    TruncateTable,
 )
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
@@ -53,11 +65,20 @@ def _is_read_only_query(query: str) -> bool:
     """
     # Trino write operations (sqlglot maps these to standard expression types)
     WRITE_TYPES = (
-        Insert, Update, Delete, Merge,
-        Create, Drop, Alter, TruncateTable,
-        Grant, Revoke, Analyze, Refresh
+        Insert,
+        Update,
+        Delete,
+        Merge,
+        Create,
+        Drop,
+        Alter,
+        TruncateTable,
+        Grant,
+        Revoke,
+        Analyze,
+        Refresh,
     )
-    
+
     try:
         # Parse using the Trino dialect
         expr = sqlglot.parse_one(query, read="trino")
@@ -69,26 +90,26 @@ def _is_read_only_query(query: str) -> bool:
     # Describe is read-only
     if isinstance(expr, Describe):
         return True
-    
+
     # Check if it's a Command statement (SHOW, EXPLAIN, etc.)
     # These are read-only commands but parsed as Command type
     if isinstance(expr, Command):
         # Extract the command text to check
         query_upper = query.strip().upper()
-        
+
         # EXPLAIN ANALYZE executes the query, so it's NOT read-only
-        if query_upper.startswith('EXPLAIN') and 'ANALYZE' in query_upper:
+        if query_upper.startswith("EXPLAIN") and "ANALYZE" in query_upper:
             return False
-        
+
         # SHOW and EXPLAIN (without ANALYZE) are read-only
         # Use exact word matching to avoid false positives like "SHOWING"
         query_words = query_upper.split()
-        if query_words and query_words[0] in ('SHOW', 'EXPLAIN'):
+        if query_words and query_words[0] in ("SHOW", "EXPLAIN"):
             return True
-        
+
         # Other commands are considered write operations for safety
         return False
-    
+
     # Walk the AST for any write operation
     return not any(isinstance(node, WRITE_TYPES) for node in expr.walk())
 
@@ -124,7 +145,7 @@ def _parse_table_identifier(table: str, catalog: str, schema: str) -> tuple:
 
 def _try_execute_query(query: str, output_file: str = "") -> str:
     """Common function to execute a query.
-    
+
     Args:
         query: The SQL query to execute
         output_file: If provided, write results directly to this file path.
@@ -133,7 +154,7 @@ def _try_execute_query(query: str, output_file: str = "") -> str:
                      The data is written server-side and is NOT returned to the caller,
                      preventing the AI from ever receiving the raw values. This enables
                      subsequent processing by other tools without LLM hallucination.
-        
+
     Returns:
         When output_file is set: a confirmation message with the row count.
         Otherwise: the query results as a JSON string or error message.
@@ -204,8 +225,12 @@ def list_tables(
 
 @mcp.tool()
 def describe_table(
-    table: str = Field(description="The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted for convenience."),
-    catalog: str = Field(description="The catalog name (e.g. 'my_catalog')", default=""),
+    table: str = Field(
+        description="The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted for convenience."
+    ),
+    catalog: str = Field(
+        description="The catalog name (e.g. 'my_catalog')", default=""
+    ),
     schema: str = Field(description="The schema name (e.g. 'my_schema')", default=""),
 ) -> str:
     """Describe the structure of a table (columns, types, etc).
@@ -229,13 +254,18 @@ def describe_table(
 @mcp.tool()
 def execute_query_read_only(
     query: str = Field(description="The SQL query to execute (read-only)"),
-    output_file: Annotated[str, Field(description="File path to write results to. Format is derived from the file extension: '.csv' for CSV, '.json' (or others) for JSON. When set, results are written directly to disk and are NOT returned to the AI, preventing hallucinated values and enabling subsequent processing by other tools.")] = "",
+    output_file: Annotated[
+        str,
+        Field(
+            description="File path to write results to. Format is derived from the file extension: '.csv' for CSV, '.json' (or others) for JSON. When set, results are written directly to disk and are NOT returned to the AI, preventing hallucinated values and enabling subsequent processing by other tools."
+        ),
+    ] = "",
 ) -> str:
     """Execute a read-only SQL query and return the results.
-    
+
     This tool is designed for read-only queries (SELECT, SHOW, DESCRIBE, EXPLAIN, etc.).
     It validates that the query is read-only before execution.
-    
+
     When output_file is provided, results are written directly to disk and only a
     confirmation message is returned. This prevents raw data from passing through
     the AI, avoiding hallucination when processing large result sets. The output
@@ -248,7 +278,7 @@ def execute_query_read_only(
                      to the AI, enabling reliable downstream processing.
     """
     logger.info(f"Executing read-only query: {query[:100]}...")
-    
+
     # Check if the query is actually read-only
     if not _is_read_only_query(query):
         logger.warning(f"Non-read-only query blocked: {query[:100]}...")
@@ -258,7 +288,7 @@ def execute_query_read_only(
             "If you need to execute write operations (INSERT, UPDATE, DELETE, CREATE, DROP, etc.), "
             "use the 'execute_query' tool instead (requires ALLOW_WRITE_QUERIES=true)."
         )
-    
+
     # Execute the query using the common function
     return _try_execute_query(query, output_file=output_file)
 
@@ -266,13 +296,18 @@ def execute_query_read_only(
 @mcp.tool()
 def execute_query(
     query: str = Field(description="The SQL query to execute"),
-    output_file: Annotated[str, Field(description="File path to write results to. Format is derived from the file extension: '.csv' for CSV, '.json' (or others) for JSON. When set, results are written directly to disk and are NOT returned to the AI, preventing hallucinated values and enabling subsequent processing by other tools.")] = "",
+    output_file: Annotated[
+        str,
+        Field(
+            description="File path to write results to. Format is derived from the file extension: '.csv' for CSV, '.json' (or others) for JSON. When set, results are written directly to disk and are NOT returned to the AI, preventing hallucinated values and enabling subsequent processing by other tools."
+        ),
+    ] = "",
 ) -> str:
     """Execute a SQL query and return the results.
-    
+
     This tool can execute any SQL query including write operations (INSERT, UPDATE, DELETE, etc.).
     By default, write operations are disabled for security. Set ALLOW_WRITE_QUERIES=true to enable.
-    
+
     When output_file is provided, results are written directly to disk and only a
     confirmation message is returned. This prevents raw data from passing through
     the AI, avoiding hallucination when processing large result sets. The output
@@ -285,7 +320,7 @@ def execute_query(
                      to the AI, enabling reliable downstream processing.
     """
     logger.info(f"Executing query: {query[:100]}...")
-    
+
     # Check if write queries are allowed
     if not config.allow_write_queries:
         logger.warning(f"Write queries are disabled. Query blocked: {query[:100]}...")
@@ -295,15 +330,19 @@ def execute_query(
             "If you only need to read data, please use the 'execute_query_read_only' tool instead. "
             "To enable write queries, set ALLOW_WRITE_QUERIES=true in your environment configuration."
         )
-    
+
     # Execute the query using the common function
     return _try_execute_query(query, output_file=output_file)
 
 
 @mcp.tool()
 def show_create_table(
-    table: str = Field(description="The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted for convenience."),
-    catalog: str = Field(description="The catalog name (e.g. 'my_catalog')", default=""),
+    table: str = Field(
+        description="The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted for convenience."
+    ),
+    catalog: str = Field(
+        description="The catalog name (e.g. 'my_catalog')", default=""
+    ),
     schema: str = Field(description="The schema name (e.g. 'my_schema')", default=""),
 ) -> str:
     """Show the CREATE TABLE statement for a table.
@@ -326,8 +365,12 @@ def show_create_table(
 
 @mcp.tool()
 def get_table_stats(
-    table: str = Field(description="The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted for convenience."),
-    catalog: str = Field(description="The catalog name (e.g. 'my_catalog')", default=""),
+    table: str = Field(
+        description="The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted for convenience."
+    ),
+    catalog: str = Field(
+        description="The catalog name (e.g. 'my_catalog')", default=""
+    ),
     schema: str = Field(description="The schema name (e.g. 'my_schema')", default=""),
 ) -> str:
     """Get statistics for a table.

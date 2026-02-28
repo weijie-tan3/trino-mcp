@@ -51,7 +51,9 @@ class TrinoClient:
         watermark = f"-- {json.dumps(watermark_data)} --\n"
         return watermark + query
 
-    def _execute_cursor(self, query: str) -> Tuple[Optional[List[str]], Optional[List[tuple]]]:
+    def _execute_cursor(
+        self, query: str
+    ) -> Tuple[Optional[List[str]], Optional[List[tuple]]]:
         """Execute a query and return the raw cursor data.
 
         This is the lowest-level execution method. It returns column names and
@@ -77,10 +79,10 @@ class TrinoClient:
 
     def execute_query(self, query: str) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
         """Execute a SQL query and return results as Python data structures.
-        
+
         Args:
             query: The SQL query to execute
-            
+
         Returns:
             List of dictionaries for queries with results (SELECT, SHOW, etc.)
             or a status dictionary for queries without results (DDL/DML)
@@ -88,17 +90,20 @@ class TrinoClient:
         columns, rows = self._execute_cursor(query)
         if columns is not None and rows is not None:
             return [dict(zip(columns, row)) for row in rows]
-        return {"status": "success", "message": "Query executed successfully without output."}
+        return {
+            "status": "success",
+            "message": "Query executed successfully without output.",
+        }
 
     def execute_query_json(self, query: str) -> str:
         """Execute a SQL query and return results as a JSON string.
-        
+
         Args:
             query: The SQL query to execute
-            
+
         Returns:
             JSON string with 2-space indentation.
-            
+
         Note: For programmatic use as a library, use execute_query() to get native Python data structures.
               To write results directly to a file (CSV or JSON), use execute_query_to_file().
         """
@@ -138,7 +143,10 @@ class TrinoClient:
                     json.dump(data, f, default=str, indent=2)
             return len(rows)
         else:
-            status = {"status": "success", "message": "Query executed successfully without output."}
+            status = {
+                "status": "success",
+                "message": "Query executed successfully without output.",
+            }
             if ext == ".csv":
                 with open(output_file, "w", encoding="utf-8", newline="") as f:
                     writer = csv.writer(f)

@@ -208,13 +208,13 @@ def load_config() -> TrinoConfig:
                         f"(environment variable names), got {type(env_var_name).__name__} for key '{key}'"
                     )
             custom_watermark = {
-                _sanitize_watermark_str(key): _sanitize_watermark_str(os.getenv(env_var_name, ""))
+                _sanitize_watermark_str(key): _sanitize_watermark_str(
+                    os.getenv(env_var_name, "")
+                )
                 for key, env_var_name in watermark_config.items()
             }
         except json.JSONDecodeError as e:
-            raise ValueError(
-                f"TRINO_MCP_CUSTOM_WATERMARK must be valid JSON: {e}"
-            )
+            raise ValueError(f"TRINO_MCP_CUSTOM_WATERMARK must be valid JSON: {e}")
 
     return TrinoConfig(
         host=host,

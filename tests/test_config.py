@@ -341,7 +341,9 @@ def test_load_config_azure_spn_missing_scope(mock_load_dotenv):
 def test_load_config_azure_spn_no_creds_all_fail(mock_cli_cls, mock_default_cls):
     """Test Azure SPN authentication fails when no credential method works."""
     mock_cli_cls.return_value.get_token.side_effect = Exception("no az login")
-    mock_default_cls.return_value.get_token.side_effect = Exception("no managed identity")
+    mock_default_cls.return_value.get_token.side_effect = Exception(
+        "no managed identity"
+    )
 
     with pytest.raises(ValueError, match="Failed to acquire Azure token"):
         load_config()
@@ -414,7 +416,9 @@ def test_load_config_custom_watermark_missing_env_var():
 )
 def test_load_config_custom_watermark_invalid_json():
     """Test custom watermark with invalid JSON raises error."""
-    with pytest.raises(ValueError, match="TRINO_MCP_CUSTOM_WATERMARK must be valid JSON"):
+    with pytest.raises(
+        ValueError, match="TRINO_MCP_CUSTOM_WATERMARK must be valid JSON"
+    ):
         load_config()
 
 
@@ -463,9 +467,13 @@ def test_get_user_from_jwt_extracts_oid():
     Azure SPN tokens carry the service principal's object ID in the 'oid' claim.
     Trino uses this value as the user identity to avoid impersonation errors.
     """
-    payload = base64.urlsafe_b64encode(
-        json.dumps({"oid": "abc-123-def", "sub": "should-not-be-used"}).encode()
-    ).decode().rstrip("=")
+    payload = (
+        base64.urlsafe_b64encode(
+            json.dumps({"oid": "abc-123-def", "sub": "should-not-be-used"}).encode()
+        )
+        .decode()
+        .rstrip("=")
+    )
     token = f"header.{payload}.signature"
 
     assert _get_user_from_jwt(token) == "abc-123-def"
@@ -477,9 +485,11 @@ def test_get_user_from_jwt_falls_back_to_sub():
     Some token types (e.g. v1 tokens) may not include 'oid'.
     The function should fall back to the 'sub' claim.
     """
-    payload = base64.urlsafe_b64encode(
-        json.dumps({"sub": "fallback-sub-id"}).encode()
-    ).decode().rstrip("=")
+    payload = (
+        base64.urlsafe_b64encode(json.dumps({"sub": "fallback-sub-id"}).encode())
+        .decode()
+        .rstrip("=")
+    )
     token = f"header.{payload}.signature"
 
     assert _get_user_from_jwt(token) == "fallback-sub-id"
@@ -498,9 +508,13 @@ def test_get_user_from_jwt_returns_none_for_invalid_token():
 
 def test_get_user_from_jwt_returns_none_when_no_identity_claims():
     """Test that _get_user_from_jwt returns None when neither 'oid' nor 'sub' exist."""
-    payload = base64.urlsafe_b64encode(
-        json.dumps({"name": "some-user", "email": "x@y.com"}).encode()
-    ).decode().rstrip("=")
+    payload = (
+        base64.urlsafe_b64encode(
+            json.dumps({"name": "some-user", "email": "x@y.com"}).encode()
+        )
+        .decode()
+        .rstrip("=")
+    )
     token = f"header.{payload}.signature"
 
     assert _get_user_from_jwt(token) is None
@@ -660,7 +674,9 @@ def test_load_config_custom_watermark_non_dict_rejected():
     A JSON array is valid JSON but not a valid watermark config. The error
     should fire before the server starts, not at query time.
     """
-    with pytest.raises(ValueError, match="TRINO_MCP_CUSTOM_WATERMARK must be a JSON object"):
+    with pytest.raises(
+        ValueError, match="TRINO_MCP_CUSTOM_WATERMARK must be a JSON object"
+    ):
         load_config()
 
 
@@ -702,7 +718,9 @@ def test_load_config_custom_watermark_non_string_value_rejected():
 )
 @patch("azure.identity.DefaultAzureCredential")
 @patch("azure.identity.AzureCliCredential")
-def test_load_config_azure_spn_falls_back_to_default_credential(mock_cli_cls, mock_default_cls):
+def test_load_config_azure_spn_falls_back_to_default_credential(
+    mock_cli_cls, mock_default_cls
+):
     """Test Azure SPN auth falls through to DefaultAzureCredential.
 
     When running on Azure (e.g. managed identity), AzureCliCredential will
