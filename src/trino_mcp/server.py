@@ -1,8 +1,6 @@
 """Trino MCP Server - Main server implementation."""
 
-import json
 import logging
-import os
 import sys
 from typing import Annotated
 
@@ -124,29 +122,28 @@ def _parse_table_identifier(table: str, catalog: str, schema: str) -> tuple:
         return (catalog, schema, table)
 
 
-def _try_execute_query(query: str, format: str = "json", output_file: str = "") -> str:
+def _try_execute_query(query: str, output_file: str = "") -> str:
     """Common function to execute a query.
     
     Args:
         query: The SQL query to execute
-        format: Output format - "json" (default) or "csv". Ignored when output_file is set.
-        output_file: If provided, write results as JSON directly to this file path.
+        output_file: If provided, write results directly to this file path.
+                     The output format is derived from the file extension:
+                     ".csv" writes CSV, ".json" (or any other extension) writes JSON.
                      The data is written server-side and is NOT returned to the caller,
-                     preventing the AI from ever receiving the raw values.
+                     preventing the AI from ever receiving the raw values. This enables
+                     subsequent processing by other tools without LLM hallucination.
         
     Returns:
         When output_file is set: a confirmation message with the row count.
-        Otherwise: the query results as a formatted string or error message.
+        Otherwise: the query results as a JSON string or error message.
     """
     try:
         if output_file:
-            raw = client.execute_query_raw(query)
-            with open(output_file, "w", encoding="utf-8") as f:
-                json.dump(raw, f, default=str, indent=2)
-            row_count = len(raw) if isinstance(raw, list) else 1
+            row_count = client.execute_query_to_file(query, output_file)
             logger.debug(f"Query results written to {output_file} ({row_count} row(s))")
             return f"Query results written to '{output_file}' ({row_count} row(s))."
-        result = client.execute_query(query, format=format)
+        result = client.execute_query_json(query)
         logger.debug("Query executed successfully")
         return result
     except Exception as e:
@@ -232,21 +229,23 @@ def describe_table(
 @mcp.tool()
 def execute_query_read_only(
     query: str = Field(description="The SQL query to execute (read-only)"),
-    format: Annotated[str, Field(description="Output format: 'json' (default) or 'csv'. Ignored when output_file is set.")] = "json",
-    output_file: Annotated[str, Field(description="File path to write results as JSON. When set, results are written directly to disk and are NOT returned to the AI, preventing hallucinated values.")] = "",
+    output_file: Annotated[str, Field(description="File path to write results to. Format is derived from the file extension: '.csv' for CSV, '.json' (or others) for JSON. When set, results are written directly to disk and are NOT returned to the AI, preventing hallucinated values and enabling subsequent processing by other tools.")] = "",
 ) -> str:
     """Execute a read-only SQL query and return the results.
     
     This tool is designed for read-only queries (SELECT, SHOW, DESCRIBE, EXPLAIN, etc.).
     It validates that the query is read-only before execution.
-    Results can be returned in JSON or CSV format for easy scripting, or written
-    directly to a file (output_file) to prevent raw data from passing through the AI.
+    
+    When output_file is provided, results are written directly to disk and only a
+    confirmation message is returned. This prevents raw data from passing through
+    the AI, avoiding hallucination when processing large result sets. The output
+    format (JSON or CSV) is derived from the file extension.
 
     Args:
         query: The SQL query to execute (must be read-only)
-        format: Output format - "json" (default) or "csv". Ignored when output_file is set.
-        output_file: File path to write results as JSON. When provided, results are written
-                     directly to disk and are NOT returned to the AI.
+        output_file: File path to write results to. Extension determines format
+                     (.csv → CSV, .json or others → JSON). Results are NOT returned
+                     to the AI, enabling reliable downstream processing.
     """
     logger.info(f"Executing read-only query: {query[:100]}...")
     
@@ -261,27 +260,29 @@ def execute_query_read_only(
         )
     
     # Execute the query using the common function
-    return _try_execute_query(query, format=format, output_file=output_file)
+    return _try_execute_query(query, output_file=output_file)
 
 
 @mcp.tool()
 def execute_query(
     query: str = Field(description="The SQL query to execute"),
-    format: Annotated[str, Field(description="Output format: 'json' (default) or 'csv'. Ignored when output_file is set.")] = "json",
-    output_file: Annotated[str, Field(description="File path to write results as JSON. When set, results are written directly to disk and are NOT returned to the AI, preventing hallucinated values.")] = "",
+    output_file: Annotated[str, Field(description="File path to write results to. Format is derived from the file extension: '.csv' for CSV, '.json' (or others) for JSON. When set, results are written directly to disk and are NOT returned to the AI, preventing hallucinated values and enabling subsequent processing by other tools.")] = "",
 ) -> str:
     """Execute a SQL query and return the results.
     
     This tool can execute any SQL query including write operations (INSERT, UPDATE, DELETE, etc.).
     By default, write operations are disabled for security. Set ALLOW_WRITE_QUERIES=true to enable.
-    Results can be returned in JSON or CSV format for easy scripting, or written
-    directly to a file (output_file) to prevent raw data from passing through the AI.
+    
+    When output_file is provided, results are written directly to disk and only a
+    confirmation message is returned. This prevents raw data from passing through
+    the AI, avoiding hallucination when processing large result sets. The output
+    format (JSON or CSV) is derived from the file extension.
 
     Args:
         query: The SQL query to execute
-        format: Output format - "json" (default) or "csv". Ignored when output_file is set.
-        output_file: File path to write results as JSON. When provided, results are written
-                     directly to disk and are NOT returned to the AI.
+        output_file: File path to write results to. Extension determines format
+                     (.csv → CSV, .json or others → JSON). Results are NOT returned
+                     to the AI, enabling reliable downstream processing.
     """
     logger.info(f"Executing query: {query[:100]}...")
     
@@ -296,7 +297,7 @@ def execute_query(
         )
     
     # Execute the query using the common function
-    return _try_execute_query(query, format=format, output_file=output_file)
+    return _try_execute_query(query, output_file=output_file)
 
 
 @mcp.tool()

@@ -8,7 +8,7 @@
 
 A simple Model Context Protocol (MCP) server for Trino query engine with OAuth and Azure Service Principal (SPN) support.
 
-## Quick Start (TLDR)
+## Quick Start (TL;DR)
 
 **Using with VS Code?** Add to `.vscode/mcp.json`:
 
@@ -46,13 +46,14 @@ That's it! The server will connect to your Trino cluster and provide query capab
 
 ## Features
 
-- **Core Trino Operations**: Query catalogs, schemas, tables, and execute SQL
-- **Multiple Auth Methods**: OAuth2, Azure Service Principal (SPN), basic username/password, or no auth
-- **Azure SPN with Auto-Refresh**: Tokens are automatically refreshed before each request — no expiry issues for long-running servers
-- **Simple & Focused**: Core Trino features without over-complication
+- **Core Trino Operations** without over-complication: Query catalogs, schemas, tables, and execute SQL
+- **Multiple Auth Methods**: OAuth2, Azure Service Principal (SPN, >=v0.1.4), basic username/password, or no auth
+  - **Azure SPN with Auto-Refresh**: Tokens are automatically refreshed before each request — no expiry issues for long-running servers
 - **uvx Compatible**: Run directly with `uvx` without installation
-- **Write Protection**: Separate tools (`execute_query` and `execute_query_read_only`) with `ALLOW_WRITE_QUERIES` configuration to prevent accidental database modifications
-- **Query Watermarking**: Automatically adds watermark comments to queries for tracking and auditing (includes username and version), with support for custom watermark key-value pairs via `TRINO_MCP_CUSTOM_WATERMARK`
+- **Double-Write Protection**: Two layers of safety — separate read-only and read-write tools (`execute_query_read_only` vs `execute_query`), plus an `ALLOW_WRITE_QUERIES` configuration flag that must be explicitly enabled before any write query can run
+- **File Export** (>=v0.2.0): Write query results directly to disk (JSON or CSV, derived from file extension) to enable subsequent processing by other tools while preventing LLM hallucination on raw data
+- **Query Watermarking**: Automatically adds watermark comments to queries for tracking and auditing (includes username and version).
+  - Support for custom watermark key-value pairs via `TRINO_MCP_CUSTOM_WATERMARK` (>=v0.2.0)
 
 ## Prerequisites
 
@@ -147,18 +148,17 @@ TRINO_PASSWORD=your_password
 # Security
 ALLOW_WRITE_QUERIES=true          # Enable write operations (INSERT, UPDATE, DELETE, etc.)
                                   # Disabled by default for safety
+                                  # accepts `true`, `1`, or `yes`
 
 # Custom Watermark
 # JSON object mapping watermark keys to environment variable names.
 # Values of those env vars are included in query watermark comments.
-# TRINO_MCP_CUSTOM_WATERMARK='{"wtm_key": "ENV_VARIABLE_NAME_TO_CATCH"}'
+TRINO_MCP_CUSTOM_WATERMARK='{"wtm_key": "ENV_VARIABLE_NAME_TO_CATCH"}'
 ```
 
 ## Available Tools
 
-The Trino MCP server provides the following tools. For the most up-to-date documentation, see the [CI-generated tool documentation](../../actions) (available as artifacts in CI runs).
-
-**Quick summary:**
+The Trino MCP server provides the following tools (see [`server.py`](src/trino_mcp/server.py) for full details):
 - `list_catalogs` - List all available Trino catalogs
 - `list_schemas` - List all schemas in a catalog
 - `list_tables` - List all tables in a schema
@@ -168,11 +168,18 @@ The Trino MCP server provides the following tools. For the most up-to-date docum
 - `show_create_table` - Show the CREATE TABLE statement for a table
 - `get_table_stats` - Get statistics for a table
 
-To generate the detailed tool documentation locally:
-```bash
-python3 scripts/generate_tool_docs.py
-# This creates TOOLS.md and tools.json with complete documentation
-```
+### Exporting Query Results to File
+
+Both `execute_query` and `execute_query_read_only` support an `output_file` parameter that writes results directly to disk instead of returning them to the AI. This is useful for:
+
+- **Preventing LLM hallucination**: Large result sets passed through the AI may be summarized, truncated, or hallucinated. Writing to a file ensures data integrity.
+- **Subsequent processing**: The exported file can be read by other tools (e.g., a Python script) for accurate data processing without AI interpretation.
+
+The output format is automatically derived from the file extension:
+- `.csv` → CSV format (with header row)
+- `.json` (or any other extension) → JSON format
+
+When `output_file` is set, only a confirmation message with the row count is returned to the AI — the raw data never passes through the model.
 
 ## Authentication
 
@@ -255,21 +262,6 @@ TRINO_SCHEMA=default
 The server reads from `.env` automatically — no need to duplicate env vars in `mcp.json`.
 
 > **Token auto-refresh**: The server automatically refreshes Azure tokens before each Trino request, so it works reliably for long-running sessions without expiry issues.
-
-## Architecture
-
-```
-trino-mcp/
-├── src/
-│   └── trino_mcp/
-│       ├── __init__.py
-│       ├── config.py      # Configuration management
-│       ├── client.py      # Trino client wrapper
-│       └── server.py      # MCP server implementation
-├── pyproject.toml         # Project configuration
-├── .env.example          # Example environment variables
-└── README.md             # This file
-```
 
 ## Development
 

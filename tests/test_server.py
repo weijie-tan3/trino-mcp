@@ -1,6 +1,5 @@
 """Tests for MCP server module."""
 
-import json
 import os
 from unittest.mock import MagicMock, patch
 
@@ -91,12 +90,12 @@ def test_execute_query_read_only_tool(mock_client):
     """Test execute_query_read_only tool with SELECT query."""
     from trino_mcp.server import execute_query_read_only
 
-    mock_client.execute_query.return_value = '[{"col": "value"}]'
+    mock_client.execute_query_json.return_value = '[{"col": "value"}]'
 
     result = execute_query_read_only("SELECT 1")
 
     assert "value" in result
-    mock_client.execute_query.assert_called_once_with("SELECT 1", format="json")
+    mock_client.execute_query_json.assert_called_once_with("SELECT 1")
 
 
 @pytest.mark.parametrize(
@@ -125,7 +124,7 @@ def test_execute_query_read_only_blocks_write_queries(mock_client, query):
     assert "does not appear to be read-only" in result
     assert "execute_query" in result
     # Client should not be called for non-read-only queries
-    mock_client.execute_query.assert_not_called()
+    mock_client.execute_query_json.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -145,12 +144,12 @@ def test_execute_query_read_only_allows_read_queries(mock_client, query, expecte
 
     assert _is_read_only_query(query)
 
-    mock_client.execute_query.return_value = f'[{{"{expected_content}": "test"}}]'
+    mock_client.execute_query_json.return_value = f'[{{"{expected_content}": "test"}}]'
 
     result = execute_query_read_only(query)
 
     assert "test" in result
-    mock_client.execute_query.assert_called_once_with(query, format="json")
+    mock_client.execute_query_json.assert_called_once_with(query)
 
 
 @patch("trino_mcp.server.client")
@@ -167,7 +166,7 @@ def test_execute_query_tool_write_disabled(mock_config, mock_client):
     assert "ALLOW_WRITE_QUERIES=true" in result
     assert "execute_query_read_only" in result
     # Client should not be called when write queries are disabled
-    mock_client.execute_query.assert_not_called()
+    mock_client.execute_query_json.assert_not_called()
 
 
 @patch("trino_mcp.server.client")
@@ -177,12 +176,12 @@ def test_execute_query_tool_write_enabled(mock_config, mock_client):
     from trino_mcp.server import execute_query
 
     mock_config.allow_write_queries = True
-    mock_client.execute_query.return_value = '[{"col": "value"}]'
+    mock_client.execute_query_json.return_value = '[{"col": "value"}]'
 
     result = execute_query("SELECT 1")
 
     assert "value" in result
-    mock_client.execute_query.assert_called_once_with("SELECT 1", format="json")
+    mock_client.execute_query_json.assert_called_once_with("SELECT 1")
 
 
 @patch("trino_mcp.server.client")
@@ -222,91 +221,63 @@ def test_mcp_server_initialization():
 
 
 @patch("trino_mcp.server.client")
-def test_execute_query_read_only_csv_format(mock_client):
-    """Test execute_query_read_only tool with CSV format."""
+def test_execute_query_read_only_output_file_csv(mock_client):
+    """Test execute_query_read_only with .csv output_file delegates to execute_query_to_file."""
     from trino_mcp.server import execute_query_read_only
 
-    mock_client.execute_query.return_value = "col1,col2\r\nval1,val2\r\n"
+    mock_client.execute_query_to_file.return_value = 2
 
-    result = execute_query_read_only("SELECT 1", format="csv")
+    result = execute_query_read_only("SELECT 1", output_file="/tmp/results.csv")
 
-    assert "val1" in result
-    mock_client.execute_query.assert_called_once_with("SELECT 1", format="csv")
+    assert "results.csv" in result
+    assert "2 row(s)" in result
+    mock_client.execute_query_to_file.assert_called_once_with("SELECT 1", "/tmp/results.csv")
 
 
 @patch("trino_mcp.server.client")
 @patch("trino_mcp.server.config")
-def test_execute_query_csv_format(mock_config, mock_client):
-    """Test execute_query tool with CSV format."""
+def test_execute_query_output_file_csv(mock_config, mock_client):
+    """Test execute_query with .csv output_file delegates to execute_query_to_file."""
     from trino_mcp.server import execute_query
 
     mock_config.allow_write_queries = True
-    mock_client.execute_query.return_value = "col1,col2\r\nval1,val2\r\n"
+    mock_client.execute_query_to_file.return_value = 2
 
-    result = execute_query("SELECT 1", format="csv")
+    result = execute_query("SELECT 1", output_file="/tmp/results.csv")
 
-    assert "val1" in result
-    mock_client.execute_query.assert_called_once_with("SELECT 1", format="csv")
-
-
-@patch("trino_mcp.server.client")
-def test_execute_query_read_only_default_json_format(mock_client):
-    """Test execute_query_read_only tool defaults to JSON format."""
-    from trino_mcp.server import execute_query_read_only
-
-    mock_client.execute_query.return_value = '[{"col": "value"}]'
-
-    result = execute_query_read_only("SELECT 1")
-
-    mock_client.execute_query.assert_called_once_with("SELECT 1", format="json")
+    assert "results.csv" in result
+    assert "2 row(s)" in result
+    mock_client.execute_query_to_file.assert_called_once_with("SELECT 1", "/tmp/results.csv")
 
 
 @patch("trino_mcp.server.client")
-def test_execute_query_read_only_output_file(mock_client, tmp_path):
-    """Test execute_query_read_only writes results to file without returning data."""
+def test_execute_query_read_only_output_file(mock_client):
+    """Test execute_query_read_only with output_file delegates to execute_query_to_file."""
     from trino_mcp.server import execute_query_read_only
 
-    mock_client.execute_query_raw.return_value = [{"col": "value", "num": 42}]
-    output_file = str(tmp_path / "results.json")
+    mock_client.execute_query_to_file.return_value = 5
 
-    result = execute_query_read_only("SELECT 1", output_file=output_file)
+    result = execute_query_read_only("SELECT 1", output_file="/tmp/results.json")
 
-    # Confirmation message returned, not the raw data
     assert "results.json" in result
-    assert "1 row(s)" in result
-    assert "value" not in result
-    assert "42" not in result
-    # Data written directly to file
-    mock_client.execute_query_raw.assert_called_once_with("SELECT 1")
-    assert os.path.exists(output_file)
-    with open(output_file) as f:
-        data = json.load(f)
-    assert data == [{"col": "value", "num": 42}]
+    assert "5 row(s)" in result
+    mock_client.execute_query_to_file.assert_called_once_with("SELECT 1", "/tmp/results.json")
 
 
 @patch("trino_mcp.server.client")
 @patch("trino_mcp.server.config")
-def test_execute_query_output_file(mock_config, mock_client, tmp_path):
-    """Test execute_query writes results to file without returning data."""
+def test_execute_query_output_file(mock_config, mock_client):
+    """Test execute_query with output_file delegates to execute_query_to_file."""
     from trino_mcp.server import execute_query
 
     mock_config.allow_write_queries = True
-    mock_client.execute_query_raw.return_value = [{"col": "value", "num": 42}]
-    output_file = str(tmp_path / "results.json")
+    mock_client.execute_query_to_file.return_value = 5
 
-    result = execute_query("SELECT 1", output_file=output_file)
+    result = execute_query("SELECT 1", output_file="/tmp/results.json")
 
-    # Confirmation message returned, not the raw data
     assert "results.json" in result
-    assert "1 row(s)" in result
-    assert "value" not in result
-    assert "42" not in result
-    # Data written directly to file
-    mock_client.execute_query_raw.assert_called_once_with("SELECT 1")
-    assert os.path.exists(output_file)
-    with open(output_file) as f:
-        data = json.load(f)
-    assert data == [{"col": "value", "num": 42}]
+    assert "5 row(s)" in result
+    mock_client.execute_query_to_file.assert_called_once_with("SELECT 1", "/tmp/results.json")
 
 
 def test_parse_table_identifier_simple():

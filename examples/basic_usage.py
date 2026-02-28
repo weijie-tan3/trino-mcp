@@ -27,25 +27,25 @@ try:
 except Exception as e:
     print(f"Error: {e}")
 
-# Example 2: Execute a query with execute_query (returns JSON string)
+# Example 2: Execute a query with execute_query_json (returns JSON string)
 print("\n" + "=" * 60)
-print("Example 2: Executing a query with execute_query (JSON string)")
+print("Example 2: Executing a query with execute_query_json (JSON string)")
 print("=" * 60)
 
 try:
-    result = client.execute_query("SELECT 1 as test_column")
+    result = client.execute_query_json("SELECT 1 as test_column")
     print(f"Query result (JSON string):\n{result}")
     print(f"Type: {type(result)}")
 except Exception as e:
     print(f"Error: {e}")
 
-# Example 3: Execute a query with execute_query_raw (returns Python data structures)
+# Example 3: Execute a query with execute_query (returns Python data structures)
 print("\n" + "=" * 60)
-print("Example 3: Executing a query with execute_query_raw (native Python)")
+print("Example 3: Executing a query with execute_query (native Python)")
 print("=" * 60)
 
 try:
-    result = client.execute_query_raw("SELECT 1 as test_column, 2 as another_column")
+    result = client.execute_query("SELECT 1 as test_column, 2 as another_column")
     print(f"Query result (Python list):\n{result}")
     print(f"Type: {type(result)}")
     print(f"First row: {result[0]}")
@@ -68,5 +68,5 @@ if config.catalog:
 print("\n" + "=" * 60)
 print("Examples completed!")
 print("=" * 60)
-print("\nNote: Use execute_query_raw() for library usage to get native Python data structures.")
-print("      Use execute_query() when you need JSON strings (e.g., for MCP server).")
+print("\nNote: Use execute_query() for library usage to get native Python data structures.")
+print("      Use execute_query_json() when you need JSON strings (e.g., for MCP server).")
