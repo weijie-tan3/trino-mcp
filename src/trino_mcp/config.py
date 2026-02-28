@@ -43,6 +43,11 @@ class AzureAutoRefreshAuthentication(trino.auth.Authentication):
         return ()
 
 
+def _sanitize_watermark_str(s: str) -> str:
+    """Strip characters that could break out of a SQL line comment."""
+    return s.replace("\n", "").replace("\r", "")
+
+
 def _get_user_from_jwt(token: str) -> Optional[str]:
     """Extract the user identity (oid) from a JWT token payload."""
     try:
@@ -68,6 +73,7 @@ class TrinoConfig:
     auth: Optional[trino.auth.Authentication] = None
     additional_kwargs: Optional[dict] = None
     allow_write_queries: bool = False
+    custom_watermark: Optional[dict] = None
 
 
 def load_config() -> TrinoConfig:
@@ -187,6 +193,29 @@ def load_config() -> TrinoConfig:
         "yes",
     )
 
+    # Custom watermark configuration
+    custom_watermark = None
+    custom_watermark_raw = os.getenv("TRINO_MCP_CUSTOM_WATERMARK")
+    if custom_watermark_raw:
+        try:
+            watermark_config = json.loads(custom_watermark_raw)
+            if not isinstance(watermark_config, dict):
+                raise ValueError("TRINO_MCP_CUSTOM_WATERMARK must be a JSON object")
+            for key, env_var_name in watermark_config.items():
+                if not isinstance(env_var_name, str):
+                    raise ValueError(
+                        f"TRINO_MCP_CUSTOM_WATERMARK values must be strings "
+                        f"(environment variable names), got {type(env_var_name).__name__} for key '{key}'"
+                    )
+            custom_watermark = {
+                _sanitize_watermark_str(key): _sanitize_watermark_str(os.getenv(env_var_name, ""))
+                for key, env_var_name in watermark_config.items()
+            }
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"TRINO_MCP_CUSTOM_WATERMARK must be valid JSON: {e}"
+            )
+
     return TrinoConfig(
         host=host,
         port=port,
@@ -197,4 +226,5 @@ def load_config() -> TrinoConfig:
         auth=auth,
         additional_kwargs=additional_kwargs,
         allow_write_queries=allow_write_queries,
+        custom_watermark=custom_watermark,
     )

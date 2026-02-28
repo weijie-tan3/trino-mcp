@@ -1,10 +1,14 @@
 {
   "servers": {
-    "trino-mcp": {
+    "trino-local-test-mcp": {
       "type": "stdio",
       "command": "uv",
       "args": ["run", "--extra", "azure", "trino-mcp"],
-      "cwd": "${workspaceFolder}"
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "TRINO_MCP_CUSTOM_WATERMARK": "{\"dummy\": \"RUN_ENV_VAR\", \"ANOTHER_VAR_FROM_ENV\": \"OSLogRateLimit\"}",
+        "RUN_ENV_VAR": "RUN_ENV_VAR_VALUE_1"
+      }
     }
   }
 }

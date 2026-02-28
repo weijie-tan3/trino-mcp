@@ -12,6 +12,14 @@ from trino_mcp.client import TrinoClient
 from trino_mcp.config import TrinoConfig
 
 
+def _expected_watermark(user: str = "trino", **custom) -> str:
+    """Build expected JSON watermark comment."""
+    data = {"trino_mcp_version": __version__, "user": user}
+    if custom:
+        data.update(sorted(custom.items()))
+    return f"-- {json.dumps(data)} --"
+
+
 @pytest.fixture
 def config():
     """Create a test configuration."""
@@ -128,7 +136,7 @@ def test_list_schemas(config, mock_connection):
 
     assert schemas == ["schema1", "schema2"]
     mock_cursor.execute.assert_called_with(
-        f"-- trino, trino-mcp v{__version__} --\nSHOW SCHEMAS FROM test_catalog"
+        f"{_expected_watermark()}\nSHOW SCHEMAS FROM test_catalog"
     )
 
 
@@ -144,7 +152,7 @@ def test_list_schemas_with_default(config, mock_connection):
 
     assert schemas == ["schema1"]
     mock_cursor.execute.assert_called_with(
-        f"-- trino, trino-mcp v{__version__} --\nSHOW SCHEMAS FROM test_catalog"
+        f"{_expected_watermark()}\nSHOW SCHEMAS FROM test_catalog"
     )
 
 
@@ -169,7 +177,7 @@ def test_list_tables(config, mock_connection):
 
     assert tables == ["table1", "table2"]
     mock_cursor.execute.assert_called_with(
-        f"-- trino, trino-mcp v{__version__} --\nSHOW TABLES FROM catalog1.schema1"
+        f"{_expected_watermark()}\nSHOW TABLES FROM catalog1.schema1"
     )
 
 
@@ -185,7 +193,7 @@ def test_list_tables_with_defaults(config, mock_connection):
 
     assert tables == ["table1"]
     mock_cursor.execute.assert_called_with(
-        f"-- trino, trino-mcp v{__version__} --\nSHOW TABLES FROM test_catalog.test_schema"
+        f"{_expected_watermark()}\nSHOW TABLES FROM test_catalog.test_schema"
     )
 
 
@@ -213,7 +221,7 @@ def test_describe_table(config, mock_connection):
     data = json.loads(result)
     assert len(data) == 2
     mock_cursor.execute.assert_called_with(
-        f"-- trino, trino-mcp v{__version__} --\nDESCRIBE catalog1.schema1.table1"
+        f"{_expected_watermark()}\nDESCRIBE catalog1.schema1.table1"
     )
 
 
@@ -229,7 +237,7 @@ def test_show_create_table(config, mock_connection):
 
     assert result == "CREATE TABLE test (id INT)"
     mock_cursor.execute.assert_called_with(
-        f"-- trino, trino-mcp v{__version__} --\nSHOW CREATE TABLE catalog1.schema1.table1"
+        f"{_expected_watermark()}\nSHOW CREATE TABLE catalog1.schema1.table1"
     )
 
 
@@ -246,7 +254,7 @@ def test_get_table_stats(config, mock_connection):
     data = json.loads(result)
     assert len(data) == 2
     mock_cursor.execute.assert_called_with(
-        f"-- trino, trino-mcp v{__version__} --\nSHOW STATS FOR catalog1.schema1.table1"
+        f"{_expected_watermark()}\nSHOW STATS FOR catalog1.schema1.table1"
     )
 
 
@@ -263,12 +271,12 @@ def test_watermark_addition(config, mock_connection):
     result = client.execute_query("SELECT 1")
 
     # Verify the watermark was added
-    expected_query = f"-- trino, trino-mcp v{__version__} --\nSELECT 1"
+    expected_query = f"{_expected_watermark()}\nSELECT 1"
     mock_cursor.execute.assert_called_with(expected_query)
 
-    # Verify the watermark includes the username
+    # Verify the watermark is a JSON comment
     call_args = mock_cursor.execute.call_args[0][0]
-    assert call_args.startswith(f"-- trino, trino-mcp v{__version__} --\n")
+    assert call_args.startswith(f"{_expected_watermark()}\n")
 
 
 def test_watermark_with_different_username(mock_connection):
@@ -292,8 +300,110 @@ def test_watermark_with_different_username(mock_connection):
     result = client.execute_query("SELECT 1")
 
     # Verify the watermark includes the correct username
-    expected_query = f"-- custom_user, trino-mcp v{__version__} --\nSELECT 1"
+    expected_query = f"{_expected_watermark(user='custom_user')}\nSELECT 1"
     mock_cursor.execute.assert_called_with(expected_query)
+
+
+def test_watermark_with_custom_watermark(mock_connection):
+    """Test that custom watermark key-value pairs are included."""
+    config = TrinoConfig(
+        host="localhost",
+        port=8080,
+        user="trino",
+        catalog="test_catalog",
+        schema="test_schema",
+        custom_watermark={"wtm_key": "my-app"},
+    )
+
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("result",)]
+    mock_cursor.fetchall.return_value = [("1",)]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    client.execute_query("SELECT 1")
+
+    expected_query = f"{_expected_watermark(wtm_key='my-app')}\nSELECT 1"
+    mock_cursor.execute.assert_called_with(expected_query)
+
+
+def test_watermark_with_multiple_custom_keys(mock_connection):
+    """Test that multiple custom watermark keys are included."""
+    config = TrinoConfig(
+        host="localhost",
+        port=8080,
+        user="trino",
+        catalog="test_catalog",
+        schema="test_schema",
+        custom_watermark={"team": "data-eng", "env": "prod"},
+    )
+
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("result",)]
+    mock_cursor.fetchall.return_value = [("1",)]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    client.execute_query("SELECT 1")
+
+    expected_query = f"{_expected_watermark(env='prod', team='data-eng')}\nSELECT 1"
+    mock_cursor.execute.assert_called_with(expected_query)
+
+
+def test_watermark_without_custom_watermark(mock_connection):
+    """Test that watermark works normally when custom_watermark is None."""
+    config = TrinoConfig(
+        host="localhost",
+        port=8080,
+        user="trino",
+        catalog="test_catalog",
+        schema="test_schema",
+        custom_watermark=None,
+    )
+
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("result",)]
+    mock_cursor.fetchall.return_value = [("1",)]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    client.execute_query("SELECT 1")
+
+    expected_query = f"{_expected_watermark()}\nSELECT 1"
+    mock_cursor.execute.assert_called_with(expected_query)
+
+
+def test_watermark_custom_values_with_newlines_do_not_escape_comment(mock_connection):
+    """Test that newlines stripped at config load time cannot escape the SQL comment."""
+    env = {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "TRINO_MCP_CUSTOM_WATERMARK": '{"key": "INJECTED_VAR"}',
+        "INJECTED_VAR": "safe-value\ninjected-sql",
+    }
+    with patch.dict("os.environ", env):
+        from trino_mcp.config import load_config
+        config = load_config()
+
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("result",)]
+    mock_cursor.fetchall.return_value = [("1",)]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    client.execute_query("SELECT 1")
+
+    call_args = mock_cursor.execute.call_args[0][0]
+    # The newline in the env var value is stripped, so it stays inside the comment.
+    # Verify no extra lines are injected before the actual query.
+    lines = call_args.split("\n")
+    assert lines[0].startswith("-- ")
+    assert lines[0].endswith(" --")
+    # The sanitized text is confined to the comment line (no literal newline escape)
+    assert lines[1] == "SELECT 1"
+    assert len(lines) == 2
 
 
 def test_list_catalogs_with_unexpected_response(config, mock_connection):

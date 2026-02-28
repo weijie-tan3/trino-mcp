@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.10"
 
 [[package]]
@@ -1425,7 +1425,6 @@ wheels = [
 
 [[package]]
 name = "trino-mcp"
-version = "0.1.5"
 source = { editable = "." }
 dependencies = [
     { name = "mcp" },
