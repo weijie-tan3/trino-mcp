@@ -294,6 +294,75 @@ def test_watermark_with_different_username(mock_connection):
     mock_cursor.execute.assert_called_with(expected_query)
 
 
+def test_watermark_with_custom_watermark(mock_connection):
+    """Test that custom watermark key-value pairs are included."""
+    config = TrinoConfig(
+        host="localhost",
+        port=8080,
+        user="trino",
+        catalog="test_catalog",
+        schema="test_schema",
+        custom_watermark={"wtm_key": "my-app"},
+    )
+
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("result",)]
+    mock_cursor.fetchall.return_value = [("1",)]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    client.execute_query("SELECT 1")
+
+    expected_query = f"-- trino, trino-mcp v{__version__}, wtm_key: my-app --\nSELECT 1"
+    mock_cursor.execute.assert_called_with(expected_query)
+
+
+def test_watermark_with_multiple_custom_keys(mock_connection):
+    """Test that multiple custom watermark keys are included."""
+    config = TrinoConfig(
+        host="localhost",
+        port=8080,
+        user="trino",
+        catalog="test_catalog",
+        schema="test_schema",
+        custom_watermark={"team": "data-eng", "env": "prod"},
+    )
+
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("result",)]
+    mock_cursor.fetchall.return_value = [("1",)]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    client.execute_query("SELECT 1")
+
+    expected_query = f"-- trino, trino-mcp v{__version__}, team: data-eng, env: prod --\nSELECT 1"
+    mock_cursor.execute.assert_called_with(expected_query)
+
+
+def test_watermark_without_custom_watermark(mock_connection):
+    """Test that watermark works normally when custom_watermark is None."""
+    config = TrinoConfig(
+        host="localhost",
+        port=8080,
+        user="trino",
+        catalog="test_catalog",
+        schema="test_schema",
+        custom_watermark=None,
+    )
+
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("result",)]
+    mock_cursor.fetchall.return_value = [("1",)]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    client.execute_query("SELECT 1")
+
+    expected_query = f"-- trino, trino-mcp v{__version__} --\nSELECT 1"
+    mock_cursor.execute.assert_called_with(expected_query)
+
+
 def test_list_catalogs_with_unexpected_response(config, mock_connection):
     """Test that list_catalogs raises error for unexpected response."""
     mock_cursor = MagicMock()

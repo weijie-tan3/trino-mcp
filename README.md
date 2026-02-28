@@ -52,7 +52,7 @@ That's it! The server will connect to your Trino cluster and provide query capab
 - **Simple & Focused**: Core Trino features without over-complication
 - **uvx Compatible**: Run directly with `uvx` without installation
 - **Write Protection**: Separate tools (`execute_query` and `execute_query_read_only`) with `ALLOW_WRITE_QUERIES` configuration to prevent accidental database modifications
-- **Query Watermarking**: Automatically adds watermark comments to queries for tracking and auditing (includes username and version)
+- **Query Watermarking**: Automatically adds watermark comments to queries for tracking and auditing (includes username and version), with support for custom watermark key-value pairs via `TRINO_MCP_CUSTOM_WATERMARK`
 
 ## Prerequisites
 
@@ -147,6 +147,11 @@ TRINO_PASSWORD=your_password
 # Security
 ALLOW_WRITE_QUERIES=true          # Enable write operations (INSERT, UPDATE, DELETE, etc.)
                                   # Disabled by default for safety
+
+# Custom Watermark
+# JSON object mapping watermark keys to environment variable names.
+# Values of those env vars are included in query watermark comments.
+# TRINO_MCP_CUSTOM_WATERMARK='{"wtm_key": "ENV_VARIABLE_NAME_TO_CATCH"}'
 ```
 
 ## Available Tools
