@@ -424,3 +424,21 @@ def test_load_config_no_custom_watermark():
     config = load_config()
 
     assert config.custom_watermark is None
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "TRINO_MCP_CUSTOM_WATERMARK": '{"key\\ninjected": "MY_VAR"}',
+        "MY_VAR": "value\ninjected",
+    },
+)
+def test_load_config_custom_watermark_strips_newlines():
+    """Test that newlines are stripped from custom watermark keys and values."""
+    config = load_config()
+
+    assert config.custom_watermark == {"keyinjected": "valueinjected"}

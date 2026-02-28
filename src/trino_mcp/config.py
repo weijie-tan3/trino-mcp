@@ -43,6 +43,11 @@ class AzureAutoRefreshAuthentication(trino.auth.Authentication):
         return ()
 
 
+def _sanitize_watermark_str(s: str) -> str:
+    """Strip characters that could break out of a SQL line comment."""
+    return s.replace("\n", "").replace("\r", "")
+
+
 def _get_user_from_jwt(token: str) -> Optional[str]:
     """Extract the user identity (oid) from a JWT token payload."""
     try:
@@ -203,7 +208,7 @@ def load_config() -> TrinoConfig:
                         f"(environment variable names), got {type(env_var_name).__name__} for key '{key}'"
                     )
             custom_watermark = {
-                key: os.getenv(env_var_name, "")
+                _sanitize_watermark_str(key): _sanitize_watermark_str(os.getenv(env_var_name, ""))
                 for key, env_var_name in watermark_config.items()
             }
         except json.JSONDecodeError as e:

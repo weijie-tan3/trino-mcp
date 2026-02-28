@@ -363,6 +363,39 @@ def test_watermark_without_custom_watermark(mock_connection):
     mock_cursor.execute.assert_called_with(expected_query)
 
 
+def test_watermark_custom_values_with_newlines_do_not_escape_comment(mock_connection):
+    """Test that newlines stripped at config load time cannot escape the SQL comment."""
+    env = {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "TRINO_MCP_CUSTOM_WATERMARK": '{"key": "INJECTED_VAR"}',
+        "INJECTED_VAR": "safe-value\ninjected-sql",
+    }
+    with patch.dict("os.environ", env):
+        from trino_mcp.config import load_config
+        config = load_config()
+
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("result",)]
+    mock_cursor.fetchall.return_value = [("1",)]
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    client.execute_query("SELECT 1")
+
+    call_args = mock_cursor.execute.call_args[0][0]
+    # The newline in the env var value is stripped, so it stays inside the comment.
+    # Verify no extra lines are injected before the actual query.
+    lines = call_args.split("\n")
+    assert lines[0].startswith("-- ")
+    assert lines[0].endswith(" --")
+    # The sanitized text is confined to the comment line (no literal newline escape)
+    assert lines[1] == "SELECT 1"
+    assert len(lines) == 2
+
+
 def test_list_catalogs_with_unexpected_response(config, mock_connection):
     """Test that list_catalogs raises error for unexpected response."""
     mock_cursor = MagicMock()
