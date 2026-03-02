@@ -77,6 +77,48 @@ def test_load_config_basic():
 @patch.dict(
     os.environ,
     {
+        "TRINO_HOST": "env-host",
+        "TRINO_PORT": "9999",
+        "TRINO_USER": "env-user",
+        "AUTH_METHOD": "NONE",
+    },
+)
+def test_load_config_overrides_take_precedence():
+    """Test that overrides dict takes precedence over env vars."""
+    config = load_config(overrides={
+        "TRINO_HOST": "override-host",
+        "TRINO_USER": "override-user",
+    })
+
+    assert config.host == "override-host"
+    assert config.user == "override-user"
+    # Non-overridden values still come from env
+    assert config.port == 9999
+
+
+@patch.dict(
+    os.environ,
+    {
+        "AUTH_METHOD": "NONE",
+    },
+    clear=True,
+)
+def test_load_config_overrides_without_env():
+    """Test overrides work even when env vars are not set."""
+    config = load_config(overrides={
+        "TRINO_HOST": "cli-host",
+        "TRINO_PORT": "443",
+        "TRINO_USER": "cli-user",
+    })
+
+    assert config.host == "cli-host"
+    assert config.port == 443
+    assert config.user == "cli-user"
+
+
+@patch.dict(
+    os.environ,
+    {
         "TRINO_HOST": "localhost",
         "TRINO_PORT": "8080",
         "TRINO_USER": "trino",
@@ -423,6 +465,7 @@ def test_load_config_custom_watermark_invalid_json():
         load_config()
 
 
+@patch("trino_mcp.config.load_dotenv")
 @patch.dict(
     os.environ,
     {
@@ -431,8 +474,9 @@ def test_load_config_custom_watermark_invalid_json():
         "TRINO_USER": "trino",
         "AUTH_METHOD": "NONE",
     },
+    clear=True,
 )
-def test_load_config_no_custom_watermark():
+def test_load_config_no_custom_watermark(mock_load_dotenv):
     """Test loading configuration without custom watermark."""
     config = load_config()
 

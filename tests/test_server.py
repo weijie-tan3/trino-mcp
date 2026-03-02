@@ -511,7 +511,7 @@ def test_execute_query_query_error(mock_config, mock_client):
 
 
 @patch("trino_mcp.server.mcp")
-@patch("trino_mcp.server._init_from_env")
+@patch("trino_mcp.server._init_config")
 @patch("sys.argv", ["trino-mcp"])
 def test_main_calls_mcp_run(mock_init, mock_mcp):
     """Test main() calls mcp.run()."""
@@ -519,7 +519,7 @@ def test_main_calls_mcp_run(mock_init, mock_mcp):
 
     main()
 
-    mock_init.assert_called_once()
+    mock_init.assert_called_once_with({})
     mock_mcp.run.assert_called_once()
 
 
@@ -577,38 +577,42 @@ def test_build_arg_parser_all_flags():
     assert args.custom_watermark == '{"key": "val"}'
 
 
-@patch.dict(os.environ, {}, clear=False)
-def test_apply_cli_args_to_env():
-    """Test _apply_cli_args_to_env sets environment variables for non-None values."""
-    from trino_mcp.server import _build_arg_parser, _apply_cli_args_to_env
+def test_cli_args_to_overrides():
+    """Test _cli_args_to_overrides returns dict of non-None values mapped to env var names."""
+    from trino_mcp.server import _build_arg_parser, _cli_args_to_overrides
 
     parser = _build_arg_parser()
     args = parser.parse_args(["--trino-host", "myhost", "--auth-method", "NONE"])
 
-    # Remove the keys first to ensure they are set by the function
-    os.environ.pop("TRINO_HOST", None)
-    os.environ.pop("AUTH_METHOD", None)
-    os.environ.pop("TRINO_PORT", None)
+    overrides = _cli_args_to_overrides(args)
 
-    _apply_cli_args_to_env(args)
+    assert overrides == {"TRINO_HOST": "myhost", "AUTH_METHOD": "NONE"}
 
-    assert os.environ["TRINO_HOST"] == "myhost"
-    assert os.environ["AUTH_METHOD"] == "NONE"
-    # trino_port was not provided, should not be set
-    assert "TRINO_PORT" not in os.environ or os.environ.get("TRINO_PORT") != "myhost"
+
+def test_cli_args_to_overrides_empty():
+    """Test _cli_args_to_overrides returns empty dict when no flags given."""
+    from trino_mcp.server import _build_arg_parser, _cli_args_to_overrides
+
+    parser = _build_arg_parser()
+    args = parser.parse_args([])
+
+    overrides = _cli_args_to_overrides(args)
+
+    assert overrides == {}
 
 
 @patch("trino_mcp.server.mcp")
-@patch("trino_mcp.server._init_from_env")
+@patch("trino_mcp.server._init_config")
 @patch("sys.argv", ["trino-mcp", "--trino-host", "cli-host", "--auth-method", "NONE"])
-def test_main_cli_args_override_env(mock_init, mock_mcp):
-    """Test main() applies CLI args to the environment before init."""
+def test_main_cli_args_passed_as_overrides(mock_init, mock_mcp):
+    """Test main() passes CLI args as overrides to _init_config (no env mutation)."""
     from trino_mcp.server import main
 
+    old_host = os.environ.get("TRINO_HOST")
     main()
 
-    # After main(), the env should have been updated
-    assert os.environ.get("TRINO_HOST") == "cli-host"
-    assert os.environ.get("AUTH_METHOD") == "NONE"
-    mock_init.assert_called_once()
+    # _init_config should receive the overrides dict
+    mock_init.assert_called_once_with({"TRINO_HOST": "cli-host", "AUTH_METHOD": "NONE"})
     mock_mcp.run.assert_called_once()
+    # Environment should NOT have been mutated
+    assert os.environ.get("TRINO_HOST") == old_host

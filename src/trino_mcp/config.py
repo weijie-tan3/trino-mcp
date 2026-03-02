@@ -77,24 +77,45 @@ class TrinoConfig:
     custom_watermark: Optional[dict] = None
 
 
-def load_config() -> TrinoConfig:
-    """Load configuration from environment variables."""
+def load_config(overrides: Optional[dict] = None) -> TrinoConfig:
+    """Load configuration from environment variables, with optional overrides.
+
+    Resolution order (highest priority first):
+    1. ``overrides`` dict (e.g. from CLI flags)
+    2. Shell environment variables
+    3. ``.env`` file (loaded by python-dotenv, which never overwrites existing vars)
+
+    Args:
+        overrides: Optional dict mapping environment variable names
+                   (e.g. ``"TRINO_HOST"``) to values. Non-None values
+                   take precedence over env vars and ``.env``.
+    """
     load_dotenv()
 
-    host = os.getenv("TRINO_HOST", "localhost")
-    port = int(os.getenv("TRINO_PORT", "8080"))
-    user = os.getenv("TRINO_USER", "trino")
-    catalog = os.getenv("TRINO_CATALOG")
-    schema = os.getenv("TRINO_SCHEMA")
-    http_scheme = os.getenv("TRINO_HTTP_SCHEME", "http")
+    if overrides is None:
+        overrides = {}
+
+    def _get(env_var: str, default: Optional[str] = None) -> Optional[str]:
+        """Return the override value if set, otherwise fall back to env."""
+        value = overrides.get(env_var)
+        if value is not None:
+            return value
+        return os.getenv(env_var, default)
+
+    host = _get("TRINO_HOST", "localhost")
+    port = int(_get("TRINO_PORT", "8080"))
+    user = _get("TRINO_USER", "trino")
+    catalog = _get("TRINO_CATALOG")
+    schema = _get("TRINO_SCHEMA")
+    http_scheme = _get("TRINO_HTTP_SCHEME", "http")
 
     # Setup authentication based on available credentials
     auth = None
     additional_kwargs = {}
 
-    auth_method = os.getenv("AUTH_METHOD", "PASSWORD").upper()
+    auth_method = _get("AUTH_METHOD", "PASSWORD").upper()
     if auth_method == "PASSWORD":
-        password = os.getenv("TRINO_PASSWORD")
+        password = _get("TRINO_PASSWORD")
         if not (user and password):
             raise ValueError(
                 "TRINO_USER and TRINO_PASSWORD must be set for password authentication"
@@ -134,7 +155,7 @@ def load_config() -> TrinoConfig:
                 "azure-identity is required for AZURE_SPN authentication. "
                 "Install it with: pip install trino-mcp[azure]"
             )
-        scope = os.getenv("AZURE_SCOPE")
+        scope = _get("AZURE_SCOPE")
         if not scope:
             raise ValueError(
                 "AZURE_SCOPE must be set for Azure SPN authentication "
@@ -154,9 +175,9 @@ def load_config() -> TrinoConfig:
 
         # 2. Try ClientSecretCredential if env vars are set
         if token is None:
-            client_id = os.getenv("AZURE_CLIENT_ID")
-            client_secret = os.getenv("AZURE_CLIENT_SECRET")
-            tenant_id = os.getenv("AZURE_TENANT_ID")
+            client_id = _get("AZURE_CLIENT_ID")
+            client_secret = _get("AZURE_CLIENT_SECRET")
+            tenant_id = _get("AZURE_TENANT_ID")
             if client_id and client_secret and tenant_id:
                 try:
                     credential = ClientSecretCredential(
@@ -203,7 +224,7 @@ def load_config() -> TrinoConfig:
         raise ValueError(f"Unsupported AUTH_METHOD: {auth_method}")
 
     # Query execution permissions
-    allow_write_queries = os.getenv("ALLOW_WRITE_QUERIES", "false").lower() in (
+    allow_write_queries = _get("ALLOW_WRITE_QUERIES", "false").lower() in (
         "true",
         "1",
         "yes",
@@ -211,7 +232,7 @@ def load_config() -> TrinoConfig:
 
     # Custom watermark configuration
     custom_watermark = None
-    custom_watermark_raw = os.getenv("TRINO_MCP_CUSTOM_WATERMARK")
+    custom_watermark_raw = _get("TRINO_MCP_CUSTOM_WATERMARK")
     if custom_watermark_raw:
         try:
             watermark_config = json.loads(custom_watermark_raw)

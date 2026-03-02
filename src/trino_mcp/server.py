@@ -2,9 +2,8 @@
 
 import argparse
 import logging
-import os
 import sys
-from typing import Annotated
+from typing import Annotated, Optional
 
 import sqlglot
 from sqlglot.expressions import (
@@ -75,9 +74,8 @@ _CLI_TO_ENV = {
 def _build_arg_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser.
 
-    Every flag is optional. When provided, the value is written into the
-    corresponding environment variable *before* ``load_config()`` runs,
-    so CLI flags always take precedence over ``.env`` / shell environment.
+    Every flag is optional. When provided, the value is passed as an override
+    to ``load_config()``, taking precedence over env vars and ``.env``.
     """
     parser = argparse.ArgumentParser(
         prog="trino-mcp",
@@ -124,12 +122,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _apply_cli_args_to_env(args: argparse.Namespace) -> None:
-    """Write non-None CLI values into the environment so ``load_config()`` picks them up."""
+def _cli_args_to_overrides(args: argparse.Namespace) -> dict:
+    """Convert non-None CLI values into an overrides dict for ``load_config()``."""
+    overrides = {}
     for dest, env_var in _CLI_TO_ENV.items():
         value = getattr(args, dest, None)
         if value is not None:
-            os.environ[env_var] = value
+            overrides[env_var] = value
+    return overrides
 
 
 def _is_read_only_query(query: str) -> bool:
@@ -475,15 +475,16 @@ def get_table_stats(
         return f"Error getting table stats: {str(e)}"
 
 
-def _init_from_env() -> None:
-    """Initialise the global ``config`` and ``client`` from the current env.
+def _init_config(overrides: Optional[dict] = None) -> None:
+    """Initialise the global ``config`` and ``client``.
 
-    This is extracted so that both ``main()`` (CLI entry-point) and test
-    helpers can trigger initialisation after the environment is prepared.
+    Args:
+        overrides: Optional dict of env-var-name → value that takes
+                   precedence over environment variables and ``.env``.
     """
     global config, client
     logger.info("Loading Trino configuration...")
-    config = load_config()
+    config = load_config(overrides=overrides)
     logger.info(f"Connected to Trino at {config.host}:{config.port}")
     client = TrinoClient(config)
 
@@ -492,12 +493,12 @@ def main():
     """Main entry point for the server."""
     global config, client
 
-    # Parse CLI arguments and inject into environment *before* loading config.
+    # Parse CLI arguments into an overrides dict (no env mutation).
     parser = _build_arg_parser()
     args = parser.parse_args()
-    _apply_cli_args_to_env(args)
+    overrides = _cli_args_to_overrides(args)
 
-    _init_from_env()
+    _init_config(overrides)
 
     logger.info("Starting Trino MCP Server...")
     mcp.run()
