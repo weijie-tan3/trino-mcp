@@ -3,6 +3,7 @@
 import base64
 import json
 import os
+import sys
 from dataclasses import dataclass
 from typing import Any, Optional, Tuple
 
@@ -101,7 +102,22 @@ def load_config() -> TrinoConfig:
         auth = trino.auth.BasicAuthentication(user, password)
 
     elif auth_method == "OAUTH2":
-        auth = trino.auth.OAuth2Authentication()
+        # Use a custom redirect handler that writes to stderr instead of stdout.
+        # The default ConsoleRedirectHandler uses print() which writes to stdout,
+        # corrupting the MCP stdio transport protocol.
+        def _stderr_redirect_handler(url: str) -> None:
+            print(
+                f"Open the following URL in browser for the external authentication:\n{url}",
+                file=sys.stderr,
+                flush=True,
+            )
+
+        auth = trino.auth.OAuth2Authentication(
+            redirect_auth_url_handler=trino.auth.CompositeRedirectHandler([
+                trino.auth.WebBrowserRedirectHandler(),
+                _stderr_redirect_handler,
+            ])
+        )
         http_scheme = "https"
         port = 443
         additional_kwargs["http_headers"] = {"X-Client-Info": "secured"}

@@ -6,6 +6,7 @@ import os
 from unittest.mock import patch, MagicMock
 
 import pytest
+import trino.auth
 
 from trino_mcp.config import (
     AzureAutoRefreshAuthentication,
@@ -611,6 +612,38 @@ def test_load_config_oauth2_enforces_https_and_port():
     assert config.port == 443
     assert config.additional_kwargs["http_headers"] == {"X-Client-Info": "secured"}
     assert config.auth is not None
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "trino.example.com",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "OAUTH2",
+    },
+)
+def test_load_config_oauth2_redirect_handler_uses_stderr(capsys):
+    """Test that OAuth2 redirect handler writes to stderr, not stdout.
+
+    The MCP server communicates over stdio. If the Trino OAuth2
+    ConsoleRedirectHandler prints to stdout, it corrupts the MCP protocol.
+    The custom handler must write to stderr instead.
+    """
+    config = load_config()
+
+    # Extract the redirect handler from the OAuth2Authentication object
+    auth = config.auth
+    assert isinstance(auth, trino.auth.OAuth2Authentication)
+
+    # Trigger the redirect handler with a fake URL
+    auth._redirect_auth_url("https://example.com/oauth2/authorize?code=test")
+
+    captured = capsys.readouterr()
+    # Nothing should be written to stdout
+    assert captured.out == "", f"OAuth2 handler wrote to stdout: {captured.out!r}"
+    # The auth URL should appear on stderr
+    assert "https://example.com/oauth2/authorize?code=test" in captured.err
 
 
 # ---------------------------------------------------------------------------
