@@ -377,7 +377,7 @@ def test_watermark_custom_values_with_newlines_do_not_escape_comment(mock_connec
         "TRINO_PORT": "8080",
         "TRINO_USER": "trino",
         "AUTH_METHOD": "NONE",
-        "TRINO_MCP_CUSTOM_WATERMARK": '{"key": "INJECTED_VAR"}',
+        "TRINO_MCP_CUSTOM_WATERMARK": '{"key": "env:INJECTED_VAR"}',
         "INJECTED_VAR": "safe-value\ninjected-sql",
     }
     with patch.dict("os.environ", env):

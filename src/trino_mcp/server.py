@@ -116,7 +116,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     # Watermark
     parser.add_argument(
         "--custom-watermark",
-        help="JSON object for custom query watermark (TRINO_MCP_CUSTOM_WATERMARK)",
+        help='JSON object for custom query watermark. Values can be literal strings '
+             'or "env:VAR" to resolve from environment variables '
+             '(TRINO_MCP_CUSTOM_WATERMARK)',
     )
 
     return parser

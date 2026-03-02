@@ -231,6 +231,9 @@ def load_config(overrides: Optional[dict] = None) -> TrinoConfig:
     )
 
     # Custom watermark configuration
+    # Values can be either:
+    #   - A literal string (used as-is), e.g. "my-app"
+    #   - An env: prefixed string to resolve from env vars, e.g. "env:MY_APP_ID"
     custom_watermark = None
     custom_watermark_raw = _get("TRINO_MCP_CUSTOM_WATERMARK")
     if custom_watermark_raw:
@@ -238,18 +241,21 @@ def load_config(overrides: Optional[dict] = None) -> TrinoConfig:
             watermark_config = json.loads(custom_watermark_raw)
             if not isinstance(watermark_config, dict):
                 raise ValueError("TRINO_MCP_CUSTOM_WATERMARK must be a JSON object")
-            for key, env_var_name in watermark_config.items():
-                if not isinstance(env_var_name, str):
+            for key, value in watermark_config.items():
+                if not isinstance(value, str):
                     raise ValueError(
-                        f"TRINO_MCP_CUSTOM_WATERMARK values must be strings "
-                        f"(environment variable names), got {type(env_var_name).__name__} for key '{key}'"
+                        f"TRINO_MCP_CUSTOM_WATERMARK values must be strings, "
+                        f"got {type(value).__name__} for key '{key}'"
                     )
-            custom_watermark = {
-                _sanitize_watermark_str(key): _sanitize_watermark_str(
-                    os.getenv(env_var_name, "")
+            custom_watermark = {}
+            for key, value in watermark_config.items():
+                if value.startswith("env:"):
+                    resolved = os.getenv(value[4:], "")
+                else:
+                    resolved = value
+                custom_watermark[_sanitize_watermark_str(key)] = (
+                    _sanitize_watermark_str(resolved)
                 )
-                for key, env_var_name in watermark_config.items()
-            }
         except json.JSONDecodeError as e:
             raise ValueError(f"TRINO_MCP_CUSTOM_WATERMARK must be valid JSON: {e}")
 

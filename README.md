@@ -182,9 +182,10 @@ ALLOW_WRITE_QUERIES=true          # Enable write operations (INSERT, UPDATE, DEL
                                   # accepts `true`, `1`, or `yes`
 
 # Custom Watermark
-# JSON object mapping watermark keys to environment variable names.
-# Values of those env vars are included in query watermark comments.
-TRINO_MCP_CUSTOM_WATERMARK='{"wtm_key": "ENV_VARIABLE_NAME_TO_CATCH"}'
+# JSON object mapping watermark keys to values.
+# Use "env:VAR_NAME" to resolve from an environment variable,
+# or a plain string for a direct literal value.
+TRINO_MCP_CUSTOM_WATERMARK='{"team": "my-team", "app_id": "env:MY_APP_ID"}'
 ```
 
 ## Available Tools

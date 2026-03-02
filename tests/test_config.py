@@ -399,12 +399,12 @@ def test_load_config_azure_spn_no_creds_all_fail(mock_cli_cls, mock_default_cls)
         "TRINO_PORT": "8080",
         "TRINO_USER": "trino",
         "AUTH_METHOD": "NONE",
-        "TRINO_MCP_CUSTOM_WATERMARK": '{"wtm_key": "MY_APP_ID"}',
+        "TRINO_MCP_CUSTOM_WATERMARK": '{"wtm_key": "env:MY_APP_ID"}',
         "MY_APP_ID": "my-cool-app",
     },
 )
 def test_load_config_custom_watermark():
-    """Test loading configuration with custom watermark."""
+    """Test loading configuration with custom watermark from env var."""
     config = load_config()
 
     assert config.custom_watermark == {"wtm_key": "my-cool-app"}
@@ -417,13 +417,13 @@ def test_load_config_custom_watermark():
         "TRINO_PORT": "8080",
         "TRINO_USER": "trino",
         "AUTH_METHOD": "NONE",
-        "TRINO_MCP_CUSTOM_WATERMARK": '{"key1": "ENV_VAR1", "key2": "ENV_VAR2"}',
+        "TRINO_MCP_CUSTOM_WATERMARK": '{"key1": "env:ENV_VAR1", "key2": "env:ENV_VAR2"}',
         "ENV_VAR1": "value1",
         "ENV_VAR2": "value2",
     },
 )
 def test_load_config_custom_watermark_multiple_keys():
-    """Test loading configuration with multiple custom watermark keys."""
+    """Test loading configuration with multiple custom watermark keys from env vars."""
     config = load_config()
 
     assert config.custom_watermark == {"key1": "value1", "key2": "value2"}
@@ -436,7 +436,7 @@ def test_load_config_custom_watermark_multiple_keys():
         "TRINO_PORT": "8080",
         "TRINO_USER": "trino",
         "AUTH_METHOD": "NONE",
-        "TRINO_MCP_CUSTOM_WATERMARK": '{"wtm_key": "MISSING_ENV_VAR"}',
+        "TRINO_MCP_CUSTOM_WATERMARK": '{"wtm_key": "env:MISSING_ENV_VAR"}',
     },
     clear=True,
 )
@@ -490,15 +490,67 @@ def test_load_config_no_custom_watermark(mock_load_dotenv):
         "TRINO_PORT": "8080",
         "TRINO_USER": "trino",
         "AUTH_METHOD": "NONE",
-        "TRINO_MCP_CUSTOM_WATERMARK": '{"key\\ninjected": "MY_VAR"}',
+        "TRINO_MCP_CUSTOM_WATERMARK": '{"key\\ninjected": "env:MY_VAR"}',
         "MY_VAR": "value\ninjected",
     },
 )
 def test_load_config_custom_watermark_strips_newlines():
-    """Test that newlines are stripped from custom watermark keys and values."""
+    """Test that newlines are stripped from custom watermark keys and env var values."""
     config = load_config()
 
     assert config.custom_watermark == {"keyinjected": "valueinjected"}
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "TRINO_MCP_CUSTOM_WATERMARK": '{"team": "my-team", "app": "my-app"}',
+    },
+)
+def test_load_config_custom_watermark_direct_values():
+    """Test custom watermark with direct literal values (no env: prefix)."""
+    config = load_config()
+
+    assert config.custom_watermark == {"team": "my-team", "app": "my-app"}
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "TRINO_MCP_CUSTOM_WATERMARK": '{"team": "data-eng", "app_id": "env:MY_APP_ID"}',
+        "MY_APP_ID": "cool-app-123",
+    },
+)
+def test_load_config_custom_watermark_mixed_direct_and_env():
+    """Test custom watermark with a mix of direct values and env: references."""
+    config = load_config()
+
+    assert config.custom_watermark == {"team": "data-eng", "app_id": "cool-app-123"}
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "TRINO_MCP_CUSTOM_WATERMARK": '{"key": "literal\\nvalue"}',
+    },
+)
+def test_load_config_custom_watermark_direct_value_strips_newlines():
+    """Test that newlines are stripped from direct literal values too."""
+    config = load_config()
+
+    assert config.custom_watermark == {"key": "literalvalue"}
 
 
 # ---------------------------------------------------------------------------
