@@ -31,12 +31,16 @@ A simple Model Context Protocol (MCP) server for Trino query engine with OAuth a
 
 **Want to run standalone?**
 ```bash
-# Set your Trino connection
+# Run directly with CLI flags (no installation needed)
+uvx trino-mcp --trino-host localhost --trino-port 8080 --auth-method NONE
+
+# Or use environment variables
 export TRINO_HOST=localhost
 export TRINO_PORT=8080
 export TRINO_USER=trino
+uvx trino-mcp
 
-# Run directly (no installation needed)
+# Or use a .env file — just run in the same directory
 uvx trino-mcp
 ```
 
@@ -49,6 +53,7 @@ That's it! The server will connect to your Trino cluster and provide query capab
 - **Core Trino Operations** without over-complication: Query catalogs, schemas, tables, and execute SQL
 - **Multiple Auth Methods**: OAuth2, Azure Service Principal (SPN, >=v0.1.4), basic username/password, or no auth
   - **Azure SPN with Auto-Refresh**: Tokens are automatically refreshed before each request — no expiry issues for long-running servers
+- **CLI flags** (>=v0.3.0): Pass all configuration via `--trino-host`, `--auth-method`, etc. — no env vars or `.env` file required
 - **uvx Compatible**: Run directly with `uvx` without installation
 - **Double-Write Protection**: Two layers of safety — separate read-only and read-write tools (`execute_query_read_only` vs `execute_query`), plus an `ALLOW_WRITE_QUERIES` configuration flag that must be explicitly enabled before any write query can run
 - **File Export** (>=v0.2.0): Write query results directly to disk (JSON or CSV, derived from file extension) to enable subsequent processing by other tools while preventing LLM hallucination on raw data
@@ -115,6 +120,38 @@ Add to `.vscode/mcp.json`:
   }
 }
 ```
+
+### Configuration Priority
+
+The server accepts configuration from three sources. When the same setting is provided in multiple places, **CLI flags take the highest priority**:
+
+| Priority | Source | Example |
+|---|---|---|
+| 1 (highest) | CLI flags | `uvx trino-mcp --trino-host myhost` |
+| 2 | Shell environment variables | `TRINO_HOST=myhost uvx trino-mcp` |
+| 3 (lowest) | `.env` file | `TRINO_HOST=myhost` in `.env` |
+
+### CLI Flags
+
+All configuration can be passed as command-line arguments:
+
+```bash
+uvx trino-mcp \
+    --trino-host trino.example.com \
+    --trino-port 443 \
+    --trino-user myuser \
+    --trino-catalog hive \
+    --trino-schema default \
+    --trino-http-scheme https \
+    --auth-method AZURE_SPN \
+    --azure-scope "api://your-trino-app-id/.default" \
+    --azure-client-id your-client-id \
+    --azure-client-secret your-client-secret \
+    --azure-tenant-id your-tenant-id \
+    --allow-write-queries true
+```
+
+Run `uvx trino-mcp --help` for the full list of flags.
 
 ### Environment Variables
 
@@ -246,20 +283,39 @@ TRINO_SCHEMA=default
 
 #### VS Code MCP config for Azure SPN
 
+Using CLI flags (no `.env` file needed):
 ```json
 {
   "servers": {
     "trino": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["--from", "trino-mcp>=0.1.4", "--with", "azure-identity", "trino-mcp"],
+      "args": [
+        "--from", "trino-mcp[azure]>=0.3.0",
+        "trino-mcp",
+        "--trino-host", "trino.example.com",
+        "--auth-method", "AZURE_SPN",
+        "--azure-scope", "api://your-trino-app-id/.default"
+      ],
       "cwd": "${workspaceFolder}"
     }
   }
 }
 ```
 
-The server reads from `.env` automatically — no need to duplicate env vars in `mcp.json`.
+Or using `.env` file (the server reads it automatically):
+```json
+{
+  "servers": {
+    "trino": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "trino-mcp[azure]>=0.1.4", "trino-mcp"],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}
+```
 
 > **Token auto-refresh**: The server automatically refreshes Azure tokens before each Trino request, so it works reliably for long-running sessions without expiry issues.
 

@@ -10,7 +10,10 @@ A simple Model Context Protocol (MCP) server for Trino query engine with OAuth a
 ## Quick Start
 
 ```bash
-# Run directly (no installation needed)
+# Run directly with CLI flags (no installation needed)
+uvx trino-mcp --trino-host localhost --auth-method NONE
+
+# Or use environment variables
 uvx trino-mcp
 
 # Or install via pip
