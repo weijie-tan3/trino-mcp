@@ -34,12 +34,6 @@ A simple Model Context Protocol (MCP) server for Trino query engine with OAuth a
 # Run directly with CLI flags (no installation needed)
 uvx trino-mcp --trino-host localhost --trino-port 8080 --auth-method NONE
 
-# Or use environment variables
-export TRINO_HOST=localhost
-export TRINO_PORT=8080
-export TRINO_USER=trino
-uvx trino-mcp
-
 # Or use a .env file — just run in the same directory
 uvx trino-mcp
 ```
@@ -53,7 +47,7 @@ That's it! The server will connect to your Trino cluster and provide query capab
 - **Core Trino Operations** without over-complication: Query catalogs, schemas, tables, and execute SQL
 - **Multiple Auth Methods**: OAuth2, Azure Service Principal (SPN, >=v0.1.4), basic username/password, or no auth
   - **Azure SPN with Auto-Refresh**: Tokens are automatically refreshed before each request — no expiry issues for long-running servers
-- **CLI flags** (>=v0.3.0): Pass all configuration via `--trino-host`, `--auth-method`, etc. — no env vars or `.env` file required
+- **CLI flags** (>=v0.2.1): Pass all configuration via `--trino-host`, `--auth-method`, etc. — no env vars or `.env` file required
 - **uvx Compatible**: Run directly with `uvx` without installation
 - **Double-Write Protection**: Two layers of safety — separate read-only and read-write tools (`execute_query_read_only` vs `execute_query`), plus an `ALLOW_WRITE_QUERIES` configuration flag that must be explicitly enabled before any write query can run
 - **File Export** (>=v0.2.0): Write query results directly to disk (JSON or CSV, derived from file extension) to enable subsequent processing by other tools while preventing LLM hallucination on raw data
@@ -291,7 +285,8 @@ Using CLI flags (no `.env` file needed):
       "type": "stdio",
       "command": "uvx",
       "args": [
-        "--from", "trino-mcp[azure]>=0.3.0",
+        "--from", "trino-mcp>=0.2.1",
+        "--with", "azure-identity",
         "trino-mcp",
         "--trino-host", "trino.example.com",
         "--auth-method", "AZURE_SPN",
@@ -310,7 +305,7 @@ Or using `.env` file (the server reads it automatically):
     "trino": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["--from", "trino-mcp[azure]>=0.1.4", "trino-mcp"],
+      "args": ["--from", "trino-mcp>=0.2.1", "--with", "azure-identity", "trino-mcp"],
       "cwd": "${workspaceFolder}"
     }
   }
