@@ -1,6 +1,8 @@
 """Trino MCP Server - Main server implementation."""
 
 import argparse
+import asyncio
+import concurrent.futures
 import logging
 import sys
 from typing import Annotated, Optional
@@ -22,7 +24,7 @@ from sqlglot.expressions import (
     Describe,
     TruncateTable,
 )
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 from pydantic import Field
 
 from .config import load_config
@@ -68,6 +70,7 @@ _CLI_TO_ENV = {
     "azure_tenant_id": "AZURE_TENANT_ID",
     "allow_write_queries": "ALLOW_WRITE_QUERIES",
     "custom_watermark": "TRINO_MCP_CUSTOM_WATERMARK",
+    "trino_request_timeout": "TRINO_REQUEST_TIMEOUT",
 }
 
 
@@ -119,6 +122,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help='JSON object for custom query watermark. Values can be literal strings '
              'or "env:VAR" to resolve from environment variables '
              '(TRINO_MCP_CUSTOM_WATERMARK)',
+    )
+
+    # Timeout
+    parser.add_argument(
+        "--trino-request-timeout",
+        help="Timeout in seconds for each HTTP request to Trino (default: 300)",
     )
 
     return parser
@@ -258,12 +267,48 @@ def _try_execute_query(query: str, output_file: str = "") -> str:
         return f"Error executing query: {str(e)}"
 
 
+# Thread pool for running blocking Trino calls without blocking the event loop.
+_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+
+# Interval (seconds) between progress heartbeat notifications.
+_PROGRESS_INTERVAL = 5.0
+
+
+async def _run_with_progress(ctx: Optional[Context], func, *args):
+    """Run a blocking *func* in a thread while sending progress heartbeats.
+
+    If *ctx* is ``None`` or the client did not provide a progress token the
+    function is simply awaited without progress reporting (graceful
+    degradation).
+    """
+    loop = asyncio.get_running_loop()
+    future = loop.run_in_executor(_executor, func, *args)
+
+    elapsed = 0.0
+    while True:
+        try:
+            return await asyncio.wait_for(
+                asyncio.shield(future), timeout=_PROGRESS_INTERVAL
+            )
+        except asyncio.TimeoutError:
+            elapsed += _PROGRESS_INTERVAL
+            if ctx is not None:
+                try:
+                    await ctx.report_progress(
+                        elapsed,
+                        total=None,
+                        message=f"Query running… ({int(elapsed)}s elapsed)",
+                    )
+                except Exception:
+                    pass  # progress reporting is best-effort
+
+
 @mcp.tool()
-def list_catalogs() -> str:
+async def list_catalogs(ctx: Context = None) -> str:
     """List all available Trino catalogs."""
     logger.info("Listing catalogs...")
     try:
-        catalogs = client.list_catalogs()
+        catalogs = await _run_with_progress(ctx, client.list_catalogs)
         logger.debug(f"Found {len(catalogs)} catalogs")
         return "\n".join(catalogs)
     except Exception as e:
@@ -272,7 +317,7 @@ def list_catalogs() -> str:
 
 
 @mcp.tool()
-def list_schemas(catalog: str = Field(description="The catalog name")) -> str:
+async def list_schemas(catalog: str = Field(description="The catalog name"), ctx: Context = None) -> str:
     """List all schemas in a catalog.
 
     Args:
@@ -280,7 +325,7 @@ def list_schemas(catalog: str = Field(description="The catalog name")) -> str:
     """
     logger.info(f"Listing schemas for catalog: {catalog}")
     try:
-        schemas = client.list_schemas(catalog)
+        schemas = await _run_with_progress(ctx, client.list_schemas, catalog)
         logger.debug(f"Found {len(schemas)} schemas")
         return "\n".join(schemas)
     except Exception as e:
@@ -289,9 +334,10 @@ def list_schemas(catalog: str = Field(description="The catalog name")) -> str:
 
 
 @mcp.tool()
-def list_tables(
+async def list_tables(
     catalog: str = Field(description="The catalog name"),
     schema: str = Field(description="The schema name"),
+    ctx: Context = None,
 ) -> str:
     """List all tables in a schema.
 
@@ -301,7 +347,7 @@ def list_tables(
     """
     logger.info(f"Listing tables for {catalog}.{schema}")
     try:
-        tables = client.list_tables(catalog, schema)
+        tables = await _run_with_progress(ctx, client.list_tables, catalog, schema)
         logger.debug(f"Found {len(tables)} tables")
         return "\n".join(tables)
     except Exception as e:
@@ -310,7 +356,7 @@ def list_tables(
 
 
 @mcp.tool()
-def describe_table(
+async def describe_table(
     table: str = Field(
         description="The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted for convenience."
     ),
@@ -318,6 +364,7 @@ def describe_table(
         description="The catalog name (e.g. 'my_catalog')", default=""
     ),
     schema: str = Field(description="The schema name (e.g. 'my_schema')", default=""),
+    ctx: Context = None,
 ) -> str:
     """Describe the structure of a table (columns, types, etc).
 
@@ -329,7 +376,7 @@ def describe_table(
     logger.info(f"Describing table: {catalog}.{schema}.{table}")
     try:
         cat, sch, tbl = _parse_table_identifier(table, catalog, schema)
-        result = client.describe_table(cat, sch, tbl)
+        result = await _run_with_progress(ctx, client.describe_table, cat, sch, tbl)
         logger.debug(f"Table description retrieved successfully")
         return result
     except Exception as e:
@@ -338,7 +385,7 @@ def describe_table(
 
 
 @mcp.tool()
-def execute_query_read_only(
+async def execute_query_read_only(
     query: str = Field(description="The SQL query to execute (read-only)"),
     output_file: Annotated[
         str,
@@ -346,6 +393,7 @@ def execute_query_read_only(
             description="File path to write results to. Format is derived from the file extension: '.csv' for CSV, '.json' (or others) for JSON. When set, results are written directly to disk and are NOT returned to the AI, preventing hallucinated values and enabling subsequent processing by other tools."
         ),
     ] = "",
+    ctx: Context = None,
 ) -> str:
     """Execute a read-only SQL query and return the results.
 
@@ -375,12 +423,12 @@ def execute_query_read_only(
             "use the 'execute_query' tool instead (requires ALLOW_WRITE_QUERIES=true)."
         )
 
-    # Execute the query using the common function
-    return _try_execute_query(query, output_file=output_file)
+    # Execute the query in a thread with progress heartbeats
+    return await _run_with_progress(ctx, _try_execute_query, query, output_file)
 
 
 @mcp.tool()
-def execute_query(
+async def execute_query(
     query: str = Field(description="The SQL query to execute"),
     output_file: Annotated[
         str,
@@ -388,6 +436,7 @@ def execute_query(
             description="File path to write results to. Format is derived from the file extension: '.csv' for CSV, '.json' (or others) for JSON. When set, results are written directly to disk and are NOT returned to the AI, preventing hallucinated values and enabling subsequent processing by other tools."
         ),
     ] = "",
+    ctx: Context = None,
 ) -> str:
     """Execute a SQL query and return the results.
 
@@ -417,12 +466,12 @@ def execute_query(
             "To enable write queries, set ALLOW_WRITE_QUERIES=true in your environment configuration."
         )
 
-    # Execute the query using the common function
-    return _try_execute_query(query, output_file=output_file)
+    # Execute the query in a thread with progress heartbeats
+    return await _run_with_progress(ctx, _try_execute_query, query, output_file)
 
 
 @mcp.tool()
-def show_create_table(
+async def show_create_table(
     table: str = Field(
         description="The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted for convenience."
     ),
@@ -430,6 +479,7 @@ def show_create_table(
         description="The catalog name (e.g. 'my_catalog')", default=""
     ),
     schema: str = Field(description="The schema name (e.g. 'my_schema')", default=""),
+    ctx: Context = None,
 ) -> str:
     """Show the CREATE TABLE statement for a table.
 
@@ -441,7 +491,7 @@ def show_create_table(
     logger.info(f"Getting CREATE TABLE for: {catalog}.{schema}.{table}")
     try:
         cat, sch, tbl = _parse_table_identifier(table, catalog, schema)
-        result = client.show_create_table(cat, sch, tbl)
+        result = await _run_with_progress(ctx, client.show_create_table, cat, sch, tbl)
         logger.debug(f"CREATE TABLE retrieved successfully")
         return result
     except Exception as e:
@@ -450,7 +500,7 @@ def show_create_table(
 
 
 @mcp.tool()
-def get_table_stats(
+async def get_table_stats(
     table: str = Field(
         description="The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted for convenience."
     ),
@@ -458,6 +508,7 @@ def get_table_stats(
         description="The catalog name (e.g. 'my_catalog')", default=""
     ),
     schema: str = Field(description="The schema name (e.g. 'my_schema')", default=""),
+    ctx: Context = None,
 ) -> str:
     """Get statistics for a table.
 
@@ -469,7 +520,7 @@ def get_table_stats(
     logger.info(f"Getting table stats for: {catalog}.{schema}.{table}")
     try:
         cat, sch, tbl = _parse_table_identifier(table, catalog, schema)
-        result = client.get_table_stats(cat, sch, tbl)
+        result = await _run_with_progress(ctx, client.get_table_stats, cat, sch, tbl)
         logger.debug(f"Table stats retrieved successfully")
         return result
     except Exception as e:

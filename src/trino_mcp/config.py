@@ -116,6 +116,7 @@ class TrinoConfig:
     additional_kwargs: Optional[dict] = None
     allow_write_queries: bool = False
     custom_watermark: Optional[dict] = None
+    request_timeout: float = 300.0
 
 
 def load_config(overrides: Optional[dict] = None) -> TrinoConfig:
@@ -296,6 +297,9 @@ def load_config(overrides: Optional[dict] = None) -> TrinoConfig:
     else:
         raise ValueError(f"Unsupported AUTH_METHOD: {auth_method}")
 
+    # Trino HTTP request timeout (per individual HTTP request, not per query)
+    request_timeout = float(_get("TRINO_REQUEST_TIMEOUT", "300.0"))
+
     # Query execution permissions
     allow_write_queries = _get("ALLOW_WRITE_QUERIES", "false").lower() in (
         "true",
@@ -343,4 +347,5 @@ def load_config(overrides: Optional[dict] = None) -> TrinoConfig:
         additional_kwargs=additional_kwargs,
         allow_write_queries=allow_write_queries,
         custom_watermark=custom_watermark,
+        request_timeout=request_timeout,
     )
