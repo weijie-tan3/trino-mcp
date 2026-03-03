@@ -234,11 +234,12 @@ uv pip install trino-mcp[azure]
 uvx --from "trino-mcp>=0.1.4" --with azure-identity trino-mcp
 ```
 
-The server tries three credential methods in order:
+The server tries four credential methods in order:
 
-1. **`az login` (AzureCliCredential)** — Easiest for local dev. Just run `az login --service-principal` beforehand.
-2. **Environment variables (ClientSecretCredential)** — Best for CI/CD. Set `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, and `AZURE_TENANT_ID`.
-3. **DefaultAzureCredential** — Fallback for managed identity, etc.
+1. **GitHub Actions OIDC (ClientAssertionCredential)** — Best for GitHub Actions CI. Uses federated credentials to fetch fresh tokens from the Actions runtime. Requires `AZURE_CLIENT_ID` and `AZURE_TENANT_ID`.
+2. **`az login` (AzureCliCredential)** — Easiest for local dev. Just run `az login --service-principal` beforehand.
+3. **Environment variables (ClientSecretCredential)** — For CI/CD with client secrets. Set `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, and `AZURE_TENANT_ID`.
+4. **DefaultAzureCredential** — Fallback for managed identity, etc.
 
 `AZURE_SCOPE` is always required (the Trino server's Azure AD app scope, e.g. `api://<trino-app-id>/.default`).
 
@@ -275,6 +276,59 @@ TRINO_HOST=trino.example.com
 TRINO_CATALOG=hive
 TRINO_SCHEMA=default
 ```
+
+#### Option C: GitHub Actions OIDC (federated credentials)
+
+For GitHub Actions workflows using `azure/login@v2` with OIDC. This avoids client secrets entirely and solves token expiry issues — the server fetches fresh OIDC tokens from the Actions runtime on every Azure AD token exchange.
+
+**Prerequisites:**
+- An Azure AD app registration with a **federated credential** configured to trust your GitHub repository's OIDC issuer (`https://token.actions.githubusercontent.com`).
+- The federated credential's subject claim must match your workflow (e.g. `repo:your-org/your-repo:ref:refs/heads/main` or `repo:your-org/your-repo:environment:production`).
+
+**Workflow setup:**
+
+```yaml
+jobs:
+  my-job:
+    permissions:
+      id-token: write   # Required — enables OIDC token requests
+      contents: read
+
+    steps:
+      - name: Azure OIDC Login
+        uses: azure/login@v2
+        with:
+          client-id: "<your-client-id>"
+          tenant-id: "<your-tenant-id>"
+          allow-no-subscriptions: true
+```
+
+**MCP config** — pass `--azure-client-id` and `--azure-tenant-id`:
+
+```json
+{
+  "trino-mcp": {
+    "type": "local",
+    "command": "uvx",
+    "args": [
+      "--from", "trino-mcp",
+      "--with", "azure-identity",
+      "trino-mcp",
+      "--trino-host", "trino.example.com",
+      "--auth-method", "AZURE_SPN",
+      "--azure-scope", "api://your-trino-app-id/.default",
+      "--azure-client-id", "<your-client-id>",
+      "--azure-tenant-id", "<your-tenant-id>",
+      "--trino-catalog", "hive",
+      "--trino-schema", "default"
+    ]
+  }
+}
+```
+
+The server automatically detects the GitHub Actions environment via `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` (set by the runner when `id-token: write` is granted). No additional environment variables need to be forwarded.
+
+> **Why not just use `azure/login@v2` + AzureCliCredential?** The `az` CLI session from OIDC login holds a short-lived token that cannot be refreshed. After ~5 minutes, queries start failing. `ClientAssertionCredential` solves this by requesting fresh OIDC tokens from the Actions runtime on every Azure AD token exchange.
 
 #### VS Code MCP config for Azure SPN
 
