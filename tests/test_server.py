@@ -1,5 +1,6 @@
 """Tests for MCP server module."""
 
+import asyncio
 import os
 import sys
 from unittest.mock import MagicMock, patch
@@ -22,78 +23,84 @@ def setup_env():
 
 
 @patch("trino_mcp.server.client")
-def test_list_catalogs_tool(mock_client):
+@pytest.mark.asyncio
+async def test_list_catalogs_tool(mock_client):
     """Test list_catalogs tool."""
     from trino_mcp.server import list_catalogs
 
     mock_client.list_catalogs.return_value = ["catalog1", "catalog2"]
 
-    result = list_catalogs()
+    result = await list_catalogs()
 
     assert result == "catalog1\ncatalog2"
     mock_client.list_catalogs.assert_called_once()
 
 
 @patch("trino_mcp.server.client")
-def test_list_catalogs_error(mock_client):
+@pytest.mark.asyncio
+async def test_list_catalogs_error(mock_client):
     """Test list_catalogs tool with error."""
     from trino_mcp.server import list_catalogs
 
     mock_client.list_catalogs.side_effect = Exception("Connection failed")
 
-    result = list_catalogs()
+    result = await list_catalogs()
 
     assert "Error listing catalogs" in result
     assert "Connection failed" in result
 
 
 @patch("trino_mcp.server.client")
-def test_list_schemas_tool(mock_client):
+@pytest.mark.asyncio
+async def test_list_schemas_tool(mock_client):
     """Test list_schemas tool."""
     from trino_mcp.server import list_schemas
 
     mock_client.list_schemas.return_value = ["schema1", "schema2"]
 
-    result = list_schemas("test_catalog")
+    result = await list_schemas("test_catalog")
 
     assert result == "schema1\nschema2"
     mock_client.list_schemas.assert_called_once_with("test_catalog")
 
 
 @patch("trino_mcp.server.client")
-def test_list_tables_tool(mock_client):
+@pytest.mark.asyncio
+async def test_list_tables_tool(mock_client):
     """Test list_tables tool."""
     from trino_mcp.server import list_tables
 
     mock_client.list_tables.return_value = ["table1", "table2"]
 
-    result = list_tables("catalog1", "schema1")
+    result = await list_tables("catalog1", "schema1")
 
     assert result == "table1\ntable2"
     mock_client.list_tables.assert_called_once_with("catalog1", "schema1")
 
 
 @patch("trino_mcp.server.client")
-def test_describe_table_tool(mock_client):
+@pytest.mark.asyncio
+async def test_describe_table_tool(mock_client):
     """Test describe_table tool."""
     from trino_mcp.server import describe_table
 
     mock_client.describe_table.return_value = '{"column": "id", "type": "integer"}'
 
-    result = describe_table("table1", "catalog1", "schema1")
+    result = await describe_table("table1", "catalog1", "schema1")
 
     assert "id" in result
     mock_client.describe_table.assert_called_once_with("catalog1", "schema1", "table1")
 
 
 @patch("trino_mcp.server.client")
-def test_execute_query_read_only_tool(mock_client):
+@pytest.mark.asyncio
+async def test_execute_query_read_only_tool(mock_client):
     """Test execute_query_read_only tool with SELECT query."""
     from trino_mcp.server import execute_query_read_only
 
     mock_client.execute_query_json.return_value = '[{"col": "value"}]'
 
-    result = execute_query_read_only("SELECT 1")
+    result = await execute_query_read_only("SELECT 1")
 
     assert "value" in result
     mock_client.execute_query_json.assert_called_once_with("SELECT 1")
@@ -114,13 +121,14 @@ def test_execute_query_read_only_tool(mock_client):
     ],
 )
 @patch("trino_mcp.server.client")
-def test_execute_query_read_only_blocks_write_queries(mock_client, query):
+@pytest.mark.asyncio
+async def test_execute_query_read_only_blocks_write_queries(mock_client, query):
     """Test execute_query_read_only tool blocks non-read-only queries."""
     from trino_mcp.server import execute_query_read_only, _is_read_only_query
 
     assert not _is_read_only_query(query)
 
-    result = execute_query_read_only(query)
+    result = await execute_query_read_only(query)
 
     assert "does not appear to be read-only" in result
     assert "execute_query" in result
@@ -139,7 +147,8 @@ def test_execute_query_read_only_blocks_write_queries(mock_client, query):
     ],
 )
 @patch("trino_mcp.server.client")
-def test_execute_query_read_only_allows_read_queries(
+@pytest.mark.asyncio
+async def test_execute_query_read_only_allows_read_queries(
     mock_client, query, expected_content
 ):
     """Test execute_query_read_only tool allows read-only queries."""
@@ -149,7 +158,7 @@ def test_execute_query_read_only_allows_read_queries(
 
     mock_client.execute_query_json.return_value = f'[{{"{expected_content}": "test"}}]'
 
-    result = execute_query_read_only(query)
+    result = await execute_query_read_only(query)
 
     assert "test" in result
     mock_client.execute_query_json.assert_called_once_with(query)
@@ -157,13 +166,14 @@ def test_execute_query_read_only_allows_read_queries(
 
 @patch("trino_mcp.server.client")
 @patch("trino_mcp.server.config")
-def test_execute_query_tool_write_disabled(mock_config, mock_client):
+@pytest.mark.asyncio
+async def test_execute_query_tool_write_disabled(mock_config, mock_client):
     """Test execute_query tool with write queries disabled."""
     from trino_mcp.server import execute_query
 
     mock_config.allow_write_queries = False
 
-    result = execute_query("INSERT INTO table VALUES (1)")
+    result = await execute_query("INSERT INTO table VALUES (1)")
 
     assert "Write queries are disabled" in result
     assert "ALLOW_WRITE_QUERIES=true" in result
@@ -174,27 +184,29 @@ def test_execute_query_tool_write_disabled(mock_config, mock_client):
 
 @patch("trino_mcp.server.client")
 @patch("trino_mcp.server.config")
-def test_execute_query_tool_write_enabled(mock_config, mock_client):
+@pytest.mark.asyncio
+async def test_execute_query_tool_write_enabled(mock_config, mock_client):
     """Test execute_query tool with write queries enabled."""
     from trino_mcp.server import execute_query
 
     mock_config.allow_write_queries = True
     mock_client.execute_query_json.return_value = '[{"col": "value"}]'
 
-    result = execute_query("SELECT 1")
+    result = await execute_query("SELECT 1")
 
     assert "value" in result
     mock_client.execute_query_json.assert_called_once_with("SELECT 1")
 
 
 @patch("trino_mcp.server.client")
-def test_show_create_table_tool(mock_client):
+@pytest.mark.asyncio
+async def test_show_create_table_tool(mock_client):
     """Test show_create_table tool."""
     from trino_mcp.server import show_create_table
 
     mock_client.show_create_table.return_value = "CREATE TABLE test (id INT)"
 
-    result = show_create_table("table1", "catalog1", "schema1")
+    result = await show_create_table("table1", "catalog1", "schema1")
 
     assert "CREATE TABLE" in result
     mock_client.show_create_table.assert_called_once_with(
@@ -203,13 +215,14 @@ def test_show_create_table_tool(mock_client):
 
 
 @patch("trino_mcp.server.client")
-def test_get_table_stats_tool(mock_client):
+@pytest.mark.asyncio
+async def test_get_table_stats_tool(mock_client):
     """Test get_table_stats tool."""
     from trino_mcp.server import get_table_stats
 
     mock_client.get_table_stats.return_value = '[{"column": "id", "size": "100"}]'
 
-    result = get_table_stats("table1", "catalog1", "schema1")
+    result = await get_table_stats("table1", "catalog1", "schema1")
 
     assert "100" in result
     mock_client.get_table_stats.assert_called_once_with("catalog1", "schema1", "table1")
@@ -224,13 +237,14 @@ def test_mcp_server_initialization():
 
 
 @patch("trino_mcp.server.client")
-def test_execute_query_read_only_output_file_csv(mock_client):
+@pytest.mark.asyncio
+async def test_execute_query_read_only_output_file_csv(mock_client):
     """Test execute_query_read_only with .csv output_file delegates to execute_query_to_file."""
     from trino_mcp.server import execute_query_read_only
 
     mock_client.execute_query_to_file.return_value = 2
 
-    result = execute_query_read_only("SELECT 1", output_file="/tmp/results.csv")
+    result = await execute_query_read_only("SELECT 1", output_file="/tmp/results.csv")
 
     assert "results.csv" in result
     assert "2 row(s)" in result
@@ -241,14 +255,15 @@ def test_execute_query_read_only_output_file_csv(mock_client):
 
 @patch("trino_mcp.server.client")
 @patch("trino_mcp.server.config")
-def test_execute_query_output_file_csv(mock_config, mock_client):
+@pytest.mark.asyncio
+async def test_execute_query_output_file_csv(mock_config, mock_client):
     """Test execute_query with .csv output_file delegates to execute_query_to_file."""
     from trino_mcp.server import execute_query
 
     mock_config.allow_write_queries = True
     mock_client.execute_query_to_file.return_value = 2
 
-    result = execute_query("SELECT 1", output_file="/tmp/results.csv")
+    result = await execute_query("SELECT 1", output_file="/tmp/results.csv")
 
     assert "results.csv" in result
     assert "2 row(s)" in result
@@ -258,13 +273,14 @@ def test_execute_query_output_file_csv(mock_config, mock_client):
 
 
 @patch("trino_mcp.server.client")
-def test_execute_query_read_only_output_file(mock_client):
+@pytest.mark.asyncio
+async def test_execute_query_read_only_output_file(mock_client):
     """Test execute_query_read_only with output_file delegates to execute_query_to_file."""
     from trino_mcp.server import execute_query_read_only
 
     mock_client.execute_query_to_file.return_value = 5
 
-    result = execute_query_read_only("SELECT 1", output_file="/tmp/results.json")
+    result = await execute_query_read_only("SELECT 1", output_file="/tmp/results.json")
 
     assert "results.json" in result
     assert "5 row(s)" in result
@@ -275,14 +291,15 @@ def test_execute_query_read_only_output_file(mock_client):
 
 @patch("trino_mcp.server.client")
 @patch("trino_mcp.server.config")
-def test_execute_query_output_file(mock_config, mock_client):
+@pytest.mark.asyncio
+async def test_execute_query_output_file(mock_config, mock_client):
     """Test execute_query with output_file delegates to execute_query_to_file."""
     from trino_mcp.server import execute_query
 
     mock_config.allow_write_queries = True
     mock_client.execute_query_to_file.return_value = 5
 
-    result = execute_query("SELECT 1", output_file="/tmp/results.json")
+    result = await execute_query("SELECT 1", output_file="/tmp/results.json")
 
     assert "results.json" in result
     assert "5 row(s)" in result
@@ -344,26 +361,28 @@ def test_parse_table_identifier_schema_qualified_with_existing_schema():
 
 
 @patch("trino_mcp.server.client")
-def test_describe_table_with_fully_qualified_name(mock_client):
+@pytest.mark.asyncio
+async def test_describe_table_with_fully_qualified_name(mock_client):
     """Test describe_table tool handles fully qualified table name."""
     from trino_mcp.server import describe_table
 
     mock_client.describe_table.return_value = '{"column": "id", "type": "integer"}'
 
-    result = describe_table("catalog1.schema1.table1", "", "")
+    result = await describe_table("catalog1.schema1.table1", "", "")
 
     assert "id" in result
     mock_client.describe_table.assert_called_once_with("catalog1", "schema1", "table1")
 
 
 @patch("trino_mcp.server.client")
-def test_show_create_table_with_fully_qualified_name(mock_client):
+@pytest.mark.asyncio
+async def test_show_create_table_with_fully_qualified_name(mock_client):
     """Test show_create_table tool handles fully qualified table name."""
     from trino_mcp.server import show_create_table
 
     mock_client.show_create_table.return_value = "CREATE TABLE test (id INT)"
 
-    result = show_create_table("catalog1.schema1.table1", "", "")
+    result = await show_create_table("catalog1.schema1.table1", "", "")
 
     assert "CREATE TABLE" in result
     mock_client.show_create_table.assert_called_once_with(
@@ -372,13 +391,14 @@ def test_show_create_table_with_fully_qualified_name(mock_client):
 
 
 @patch("trino_mcp.server.client")
-def test_get_table_stats_with_fully_qualified_name(mock_client):
+@pytest.mark.asyncio
+async def test_get_table_stats_with_fully_qualified_name(mock_client):
     """Test get_table_stats tool handles fully qualified table name."""
     from trino_mcp.server import get_table_stats
 
     mock_client.get_table_stats.return_value = '[{"column": "id", "size": "100"}]'
 
-    result = get_table_stats("catalog1.schema1.table1", "", "")
+    result = await get_table_stats("catalog1.schema1.table1", "", "")
 
     assert "100" in result
     mock_client.get_table_stats.assert_called_once_with("catalog1", "schema1", "table1")
@@ -418,78 +438,84 @@ def test_is_read_only_query_unknown_command_blocked():
 
 
 @patch("trino_mcp.server.client")
-def test_list_schemas_error(mock_client):
+@pytest.mark.asyncio
+async def test_list_schemas_error(mock_client):
     """Test list_schemas tool with error."""
     from trino_mcp.server import list_schemas
 
     mock_client.list_schemas.side_effect = Exception("Connection failed")
 
-    result = list_schemas("test_catalog")
+    result = await list_schemas("test_catalog")
 
     assert "Error listing schemas" in result
     assert "Connection failed" in result
 
 
 @patch("trino_mcp.server.client")
-def test_list_tables_error(mock_client):
+@pytest.mark.asyncio
+async def test_list_tables_error(mock_client):
     """Test list_tables tool with error."""
     from trino_mcp.server import list_tables
 
     mock_client.list_tables.side_effect = Exception("Connection failed")
 
-    result = list_tables("catalog1", "schema1")
+    result = await list_tables("catalog1", "schema1")
 
     assert "Error listing tables" in result
     assert "Connection failed" in result
 
 
 @patch("trino_mcp.server.client")
-def test_describe_table_error(mock_client):
+@pytest.mark.asyncio
+async def test_describe_table_error(mock_client):
     """Test describe_table tool with error."""
     from trino_mcp.server import describe_table
 
     mock_client.describe_table.side_effect = Exception("Table not found")
 
-    result = describe_table("table1", "catalog1", "schema1")
+    result = await describe_table("table1", "catalog1", "schema1")
 
     assert "Error describing table" in result
     assert "Table not found" in result
 
 
 @patch("trino_mcp.server.client")
-def test_show_create_table_error(mock_client):
+@pytest.mark.asyncio
+async def test_show_create_table_error(mock_client):
     """Test show_create_table tool with error."""
     from trino_mcp.server import show_create_table
 
     mock_client.show_create_table.side_effect = Exception("Table not found")
 
-    result = show_create_table("table1", "catalog1", "schema1")
+    result = await show_create_table("table1", "catalog1", "schema1")
 
     assert "Error showing CREATE TABLE" in result
     assert "Table not found" in result
 
 
 @patch("trino_mcp.server.client")
-def test_get_table_stats_error(mock_client):
+@pytest.mark.asyncio
+async def test_get_table_stats_error(mock_client):
     """Test get_table_stats tool with error."""
     from trino_mcp.server import get_table_stats
 
     mock_client.get_table_stats.side_effect = Exception("Stats unavailable")
 
-    result = get_table_stats("table1", "catalog1", "schema1")
+    result = await get_table_stats("table1", "catalog1", "schema1")
 
     assert "Error getting table stats" in result
     assert "Stats unavailable" in result
 
 
 @patch("trino_mcp.server.client")
-def test_execute_query_read_only_query_error(mock_client):
+@pytest.mark.asyncio
+async def test_execute_query_read_only_query_error(mock_client):
     """Test execute_query_read_only tool when query execution raises an exception."""
     from trino_mcp.server import execute_query_read_only
 
     mock_client.execute_query_json.side_effect = Exception("Timeout")
 
-    result = execute_query_read_only("SELECT 1")
+    result = await execute_query_read_only("SELECT 1")
 
     assert "Error executing query" in result
     assert "Timeout" in result
@@ -497,14 +523,15 @@ def test_execute_query_read_only_query_error(mock_client):
 
 @patch("trino_mcp.server.client")
 @patch("trino_mcp.server.config")
-def test_execute_query_query_error(mock_config, mock_client):
+@pytest.mark.asyncio
+async def test_execute_query_query_error(mock_config, mock_client):
     """Test execute_query tool when query execution raises an exception."""
     from trino_mcp.server import execute_query
 
     mock_config.allow_write_queries = True
     mock_client.execute_query_json.side_effect = Exception("Timeout")
 
-    result = execute_query("INSERT INTO t VALUES (1)")
+    result = await execute_query("INSERT INTO t VALUES (1)")
 
     assert "Error executing query" in result
     assert "Timeout" in result
@@ -616,3 +643,94 @@ def test_main_cli_args_passed_as_overrides(mock_init, mock_mcp):
     mock_mcp.run.assert_called_once()
     # Environment should NOT have been mutated
     assert os.environ.get("TRINO_HOST") == old_host
+
+
+# ---------------------------------------------------------------------------
+# Async progress toggle tests
+# ---------------------------------------------------------------------------
+
+
+@patch("trino_mcp.server.client")
+@patch("trino_mcp.server.config")
+@pytest.mark.asyncio
+async def test_run_with_progress_sync_mode(mock_config, mock_client):
+    """Test that _run_with_progress calls func directly when async_progress is False."""
+    from trino_mcp.server import _run_with_progress
+
+    mock_config.async_progress = False
+
+    def my_func(a, b):
+        return a + b
+
+    result = await _run_with_progress(None, my_func, 1, 2)
+    assert result == 3
+
+
+@patch("trino_mcp.server.client")
+@patch("trino_mcp.server.config")
+@pytest.mark.asyncio
+async def test_run_with_progress_async_mode(mock_config, mock_client):
+    """Test that _run_with_progress uses thread pool when async_progress is True."""
+    from trino_mcp.server import _run_with_progress
+
+    mock_config.async_progress = True
+
+    def my_func(a, b):
+        return a + b
+
+    result = await _run_with_progress(None, my_func, 1, 2)
+    assert result == 3
+
+
+@patch("trino_mcp.server.client")
+@patch("trino_mcp.server.config")
+@pytest.mark.asyncio
+async def test_list_catalogs_sync_mode(mock_config, mock_client):
+    """Test list_catalogs works in sync mode (async_progress=False)."""
+    from trino_mcp.server import list_catalogs
+
+    mock_config.async_progress = False
+    mock_client.list_catalogs.return_value = ["cat1", "cat2"]
+
+    result = await list_catalogs()
+
+    assert result == "cat1\ncat2"
+    mock_client.list_catalogs.assert_called_once()
+
+
+@patch("trino_mcp.server.client")
+@patch("trino_mcp.server.config")
+@pytest.mark.asyncio
+async def test_execute_query_read_only_sync_mode(mock_config, mock_client):
+    """Test execute_query_read_only works in sync mode (async_progress=False)."""
+    from trino_mcp.server import execute_query_read_only
+
+    mock_config.async_progress = False
+    mock_client.execute_query_json.return_value = '[{"col": "value"}]'
+
+    result = await execute_query_read_only("SELECT 1")
+
+    assert "value" in result
+
+
+def test_load_config_async_progress_default():
+    """Test async_progress defaults to True."""
+    from trino_mcp.config import load_config
+
+    with patch.dict("os.environ", {"AUTH_METHOD": "NONE"}, clear=False):
+        os.environ.pop("TRINO_MCP_ASYNC_PROGRESS", None)
+        cfg = load_config()
+        assert cfg.async_progress is True
+
+
+def test_load_config_async_progress_disabled():
+    """Test async_progress can be disabled via env var."""
+    from trino_mcp.config import load_config
+
+    with patch.dict(
+        "os.environ",
+        {"AUTH_METHOD": "NONE", "TRINO_MCP_ASYNC_PROGRESS": "false"},
+        clear=False,
+    ):
+        cfg = load_config()
+        assert cfg.async_progress is False
