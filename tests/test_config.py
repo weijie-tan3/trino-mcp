@@ -732,6 +732,7 @@ def test_load_config_oauth2_enforces_https_and_port():
 
     assert config.http_scheme == "https"
     assert config.port == 443
+    assert config.additional_kwargs is not None
     assert config.additional_kwargs["http_headers"] == {"X-Client-Info": "secured"}
     assert config.auth is not None
 
@@ -947,6 +948,7 @@ def test_make_github_actions_oidc_fetcher_calls_endpoint():
     mock_response.__exit__ = MagicMock(return_value=False)
 
     fetcher = _make_github_actions_oidc_fetcher(audience="api://AzureADTokenExchange")
+    assert fetcher is not None
 
     with patch("trino_mcp.config.urllib.request.urlopen", return_value=mock_response) as mock_urlopen:
         token = fetcher()
