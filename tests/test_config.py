@@ -13,6 +13,7 @@ from trino_mcp.config import (
     TrinoConfig,
     _AutoRefreshBearerAuth,
     _get_user_from_jwt,
+    _make_github_actions_oidc_fetcher,
     load_config,
 )
 
@@ -731,6 +732,7 @@ def test_load_config_oauth2_enforces_https_and_port():
 
     assert config.http_scheme == "https"
     assert config.port == 443
+    assert config.additional_kwargs is not None
     assert config.additional_kwargs["http_headers"] == {"X-Client-Info": "secured"}
     assert config.auth is not None
 
@@ -895,3 +897,195 @@ def test_load_config_azure_spn_falls_back_to_default_credential(
     assert config.user == "managed-id-oid"
     assert config.http_scheme == "https"
     assert config.port == 443
+
+
+# ---------------------------------------------------------------------------
+# _make_github_actions_oidc_fetcher — OIDC token fetching
+# ---------------------------------------------------------------------------
+
+
+def test_make_github_actions_oidc_fetcher_returns_none_without_env():
+    """Test returns None when ACTIONS_ID_TOKEN_REQUEST_URL is not set."""
+    with patch.dict(os.environ, {}, clear=True):
+        assert _make_github_actions_oidc_fetcher() is None
+
+
+def test_make_github_actions_oidc_fetcher_returns_none_partial_env():
+    """Test returns None when only one of the two env vars is set."""
+    with patch.dict(
+        os.environ,
+        {"ACTIONS_ID_TOKEN_REQUEST_URL": "https://example.com"},
+        clear=True,
+    ):
+        assert _make_github_actions_oidc_fetcher() is None
+
+
+@patch.dict(
+    os.environ,
+    {
+        "ACTIONS_ID_TOKEN_REQUEST_URL": "https://vstoken.actions.githubusercontent.com/token?version=1",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "gha-runner-token",
+    },
+)
+def test_make_github_actions_oidc_fetcher_returns_callable():
+    """Test returns a callable when both env vars are set."""
+    fetcher = _make_github_actions_oidc_fetcher()
+    assert callable(fetcher)
+
+
+@patch.dict(
+    os.environ,
+    {
+        "ACTIONS_ID_TOKEN_REQUEST_URL": "https://vstoken.actions.githubusercontent.com/token?version=1",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "gha-runner-token",
+    },
+)
+def test_make_github_actions_oidc_fetcher_calls_endpoint():
+    """Test that the fetcher calls the GitHub Actions OIDC endpoint."""
+    mock_response = MagicMock()
+    mock_response.read.return_value = json.dumps({"value": "oidc-jwt-assertion"}).encode()
+    mock_response.__enter__ = lambda s: s
+    mock_response.__exit__ = MagicMock(return_value=False)
+
+    fetcher = _make_github_actions_oidc_fetcher(audience="api://AzureADTokenExchange")
+    assert fetcher is not None
+
+    with patch("trino_mcp.config.urllib.request.urlopen", return_value=mock_response) as mock_urlopen:
+        token = fetcher()
+
+    assert token == "oidc-jwt-assertion"
+    call_args = mock_urlopen.call_args[0][0]
+    assert "audience=api://AzureADTokenExchange" in call_args.full_url
+    assert call_args.get_header("Authorization") == "bearer gha-runner-token"
+
+
+# ---------------------------------------------------------------------------
+# load_config — Azure SPN with GitHub Actions OIDC
+# ---------------------------------------------------------------------------
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "AZURE_SPN",
+        "AZURE_SCOPE": "api://test-scope/.default",
+        "AZURE_CLIENT_ID": "my-client-id",
+        "AZURE_TENANT_ID": "my-tenant-id",
+        "ACTIONS_ID_TOKEN_REQUEST_URL": "https://vstoken.actions.githubusercontent.com/token?version=1",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "gha-runner-token",
+    },
+)
+@patch("trino_mcp.config._get_user_from_jwt", return_value="oidc-oid-123")
+@patch("trino_mcp.config._make_github_actions_oidc_fetcher")
+@patch("azure.identity.ClientAssertionCredential")
+def test_load_config_azure_spn_github_actions_oidc(
+    mock_assertion_cls, mock_fetcher_factory, mock_get_user
+):
+    """Test Azure SPN auth uses ClientAssertionCredential in GitHub Actions.
+
+    When ACTIONS_ID_TOKEN_REQUEST_URL is set, the code should prefer
+    ClientAssertionCredential over AzureCliCredential, because it can
+    fetch fresh OIDC tokens from the Actions runtime indefinitely.
+    """
+    mock_fetcher = MagicMock()
+    mock_fetcher_factory.return_value = mock_fetcher
+
+    mock_cred = MagicMock()
+    mock_cred.get_token.return_value.token = "oidc-azure-token"
+    mock_assertion_cls.return_value = mock_cred
+
+    config = load_config()
+
+    mock_assertion_cls.assert_called_once_with(
+        tenant_id="my-tenant-id",
+        client_id="my-client-id",
+        func=mock_fetcher,
+    )
+    assert isinstance(config.auth, AzureAutoRefreshAuthentication)
+    assert config.user == "oidc-oid-123"
+    assert config.http_scheme == "https"
+    assert config.port == 443
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "AZURE_SPN",
+        "AZURE_SCOPE": "api://test-scope/.default",
+        "ACTIONS_ID_TOKEN_REQUEST_URL": "https://vstoken.actions.githubusercontent.com/token?version=1",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "gha-runner-token",
+    },
+    clear=True,
+)
+@patch("trino_mcp.config._make_github_actions_oidc_fetcher")
+@patch("azure.identity.AzureCliCredential")
+def test_load_config_azure_spn_oidc_skipped_without_client_id(
+    mock_cli_cls, mock_fetcher_factory
+):
+    """Test that OIDC path is skipped when AZURE_CLIENT_ID is not set.
+
+    Even if ACTIONS_ID_TOKEN_REQUEST_URL is present, without client-id and
+    tenant-id we can't use ClientAssertionCredential. Should fall through
+    to AzureCliCredential.
+    """
+    mock_fetcher = MagicMock()
+    mock_fetcher_factory.return_value = mock_fetcher
+
+    mock_cli = MagicMock()
+    mock_cli.get_token.return_value.token = "cli-token"
+    mock_cli_cls.return_value = mock_cli
+
+    with patch("trino_mcp.config._get_user_from_jwt", return_value="cli-oid"):
+        config = load_config()
+
+    # ClientAssertionCredential should NOT have been attempted
+    mock_cli.get_token.assert_called_once_with("api://test-scope/.default")
+    assert isinstance(config.auth, AzureAutoRefreshAuthentication)
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "AZURE_SPN",
+        "AZURE_SCOPE": "api://test-scope/.default",
+        "AZURE_CLIENT_ID": "my-client-id",
+        "AZURE_TENANT_ID": "my-tenant-id",
+        "ACTIONS_ID_TOKEN_REQUEST_URL": "https://vstoken.actions.githubusercontent.com/token?version=1",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "gha-runner-token",
+    },
+)
+@patch("trino_mcp.config._make_github_actions_oidc_fetcher")
+@patch("azure.identity.ClientAssertionCredential")
+@patch("azure.identity.AzureCliCredential")
+def test_load_config_azure_spn_oidc_fails_falls_back_to_cli(
+    mock_cli_cls, mock_assertion_cls, mock_fetcher_factory
+):
+    """Test fallback from OIDC to AzureCliCredential when OIDC fails.
+
+    If ClientAssertionCredential fails (e.g. federated credential not
+    configured), the code should fall through to AzureCliCredential.
+    """
+    mock_fetcher = MagicMock()
+    mock_fetcher_factory.return_value = mock_fetcher
+
+    mock_assertion_cls.return_value.get_token.side_effect = Exception("OIDC failed")
+
+    mock_cli = MagicMock()
+    mock_cli.get_token.return_value.token = "cli-fallback-token"
+    mock_cli_cls.return_value = mock_cli
+
+    with patch("trino_mcp.config._get_user_from_jwt", return_value="cli-oid"):
+        config = load_config()
+
+    mock_cli.get_token.assert_called_once_with("api://test-scope/.default")
+    assert isinstance(config.auth, AzureAutoRefreshAuthentication)
+    assert config.user == "cli-oid"
