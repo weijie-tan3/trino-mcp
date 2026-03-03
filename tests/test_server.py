@@ -643,3 +643,94 @@ def test_main_cli_args_passed_as_overrides(mock_init, mock_mcp):
     mock_mcp.run.assert_called_once()
     # Environment should NOT have been mutated
     assert os.environ.get("TRINO_HOST") == old_host
+
+
+# ---------------------------------------------------------------------------
+# Async progress toggle tests
+# ---------------------------------------------------------------------------
+
+
+@patch("trino_mcp.server.client")
+@patch("trino_mcp.server.config")
+@pytest.mark.asyncio
+async def test_run_with_progress_sync_mode(mock_config, mock_client):
+    """Test that _run_with_progress calls func directly when async_progress is False."""
+    from trino_mcp.server import _run_with_progress
+
+    mock_config.async_progress = False
+
+    def my_func(a, b):
+        return a + b
+
+    result = await _run_with_progress(None, my_func, 1, 2)
+    assert result == 3
+
+
+@patch("trino_mcp.server.client")
+@patch("trino_mcp.server.config")
+@pytest.mark.asyncio
+async def test_run_with_progress_async_mode(mock_config, mock_client):
+    """Test that _run_with_progress uses thread pool when async_progress is True."""
+    from trino_mcp.server import _run_with_progress
+
+    mock_config.async_progress = True
+
+    def my_func(a, b):
+        return a + b
+
+    result = await _run_with_progress(None, my_func, 1, 2)
+    assert result == 3
+
+
+@patch("trino_mcp.server.client")
+@patch("trino_mcp.server.config")
+@pytest.mark.asyncio
+async def test_list_catalogs_sync_mode(mock_config, mock_client):
+    """Test list_catalogs works in sync mode (async_progress=False)."""
+    from trino_mcp.server import list_catalogs
+
+    mock_config.async_progress = False
+    mock_client.list_catalogs.return_value = ["cat1", "cat2"]
+
+    result = await list_catalogs()
+
+    assert result == "cat1\ncat2"
+    mock_client.list_catalogs.assert_called_once()
+
+
+@patch("trino_mcp.server.client")
+@patch("trino_mcp.server.config")
+@pytest.mark.asyncio
+async def test_execute_query_read_only_sync_mode(mock_config, mock_client):
+    """Test execute_query_read_only works in sync mode (async_progress=False)."""
+    from trino_mcp.server import execute_query_read_only
+
+    mock_config.async_progress = False
+    mock_client.execute_query_json.return_value = '[{"col": "value"}]'
+
+    result = await execute_query_read_only("SELECT 1")
+
+    assert "value" in result
+
+
+def test_load_config_async_progress_default():
+    """Test async_progress defaults to True."""
+    from trino_mcp.config import load_config
+
+    with patch.dict("os.environ", {"AUTH_METHOD": "NONE"}, clear=False):
+        os.environ.pop("TRINO_MCP_ASYNC_PROGRESS", None)
+        cfg = load_config()
+        assert cfg.async_progress is True
+
+
+def test_load_config_async_progress_disabled():
+    """Test async_progress can be disabled via env var."""
+    from trino_mcp.config import load_config
+
+    with patch.dict(
+        "os.environ",
+        {"AUTH_METHOD": "NONE", "TRINO_MCP_ASYNC_PROGRESS": "false"},
+        clear=False,
+    ):
+        cfg = load_config()
+        assert cfg.async_progress is False

@@ -71,6 +71,7 @@ _CLI_TO_ENV = {
     "allow_write_queries": "ALLOW_WRITE_QUERIES",
     "custom_watermark": "TRINO_MCP_CUSTOM_WATERMARK",
     "trino_request_timeout": "TRINO_REQUEST_TIMEOUT",
+    "async_progress": "TRINO_MCP_ASYNC_PROGRESS",
 }
 
 
@@ -128,6 +129,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--trino-request-timeout",
         help="Timeout in seconds for each HTTP request to Trino (default: 300)",
+    )
+
+    # Async progress
+    parser.add_argument(
+        "--async-progress",
+        help="Enable async progress heartbeats to keep the MCP connection alive "
+             "during long queries: true/false (default: true). Disable for "
+             "simpler synchronous execution.",
     )
 
     return parser
@@ -277,10 +286,19 @@ _PROGRESS_INTERVAL = 5.0
 async def _run_with_progress(ctx: Optional[Context], func, *args):
     """Run a blocking *func* in a thread while sending progress heartbeats.
 
-    If *ctx* is ``None`` or the client did not provide a progress token the
-    function is simply awaited without progress reporting (graceful
-    degradation).
+    When ``config.async_progress`` is ``True`` (the default), the blocking
+    call runs in a thread pool and the coroutine sends periodic heartbeat
+    notifications to the MCP client, preventing client-side timeouts.
+
+    When ``config.async_progress`` is ``False``, the function is called
+    directly in the current thread (synchronous execution, simpler but
+    blocks the event loop — suitable for short queries or environments
+    where the client timeout is generous).
     """
+    if config is None or not config.async_progress:
+        # Synchronous mode — call directly, no thread pool / heartbeats.
+        return func(*args)
+
     loop = asyncio.get_running_loop()
     future = loop.run_in_executor(_executor, func, *args)
 
