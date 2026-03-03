@@ -33,6 +33,14 @@ class TrinoClient:
             **(self.config.additional_kwargs or {}),
         )
 
+    def _reconnect(self) -> None:
+        """Close the existing connection and create a fresh one."""
+        try:
+            self.connection.close()
+        except Exception:
+            pass
+        self.connection = self._create_connection()
+
     def _add_watermark(self, query: str) -> str:
         """Add watermark comment to the query.
 
@@ -67,9 +75,15 @@ class TrinoClient:
             A tuple of (columns, rows) for queries with results, or (None, None)
             for DDL/DML statements that produce no output.
         """
-        cursor: Cursor = self.connection.cursor()
         watermarked_query = self._add_watermark(query)
-        cursor.execute(watermarked_query)
+        try:
+            cursor: Cursor = self.connection.cursor()
+            cursor.execute(watermarked_query)
+        except Exception:
+            # Connection may be stale — reconnect and retry once.
+            self._reconnect()
+            cursor = self.connection.cursor()
+            cursor.execute(watermarked_query)
 
         if cursor.description:
             columns = [col[0] for col in cursor.description]

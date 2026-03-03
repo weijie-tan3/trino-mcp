@@ -11,7 +11,7 @@ import trino.auth
 from trino_mcp.config import (
     AzureAutoRefreshAuthentication,
     TrinoConfig,
-    _BearerAuth,
+    _AutoRefreshBearerAuth,
     _get_user_from_jwt,
     load_config,
 )
@@ -618,17 +618,21 @@ def test_get_user_from_jwt_returns_none_when_no_identity_claims():
 
 
 # ---------------------------------------------------------------------------
-# _BearerAuth — Authorization header injection
+# _AutoRefreshBearerAuth — Authorization header injection with auto-refresh
 # ---------------------------------------------------------------------------
 
 
-def test_bearer_auth_sets_authorization_header():
-    """Test that _BearerAuth sets the correct Authorization header on a request.
+def test_auto_refresh_bearer_auth_sets_authorization_header():
+    """Test that _AutoRefreshBearerAuth fetches a fresh token and sets the
+    correct Authorization header on every HTTP request.
 
     This is the mechanism by which Azure tokens are attached to every
     Trino HTTP request. A wrong header format would cause auth failures.
     """
-    auth = _BearerAuth("my-token-value")
+    mock_credential = MagicMock()
+    mock_credential.get_token.return_value.token = "my-token-value"
+
+    auth = _AutoRefreshBearerAuth(mock_credential, "api://scope/.default")
     request = MagicMock()
     request.headers = {}
 
@@ -636,6 +640,32 @@ def test_bearer_auth_sets_authorization_header():
 
     assert result is request
     assert request.headers["Authorization"] == "Bearer my-token-value"
+    mock_credential.get_token.assert_called_once_with("api://scope/.default")
+
+
+def test_auto_refresh_bearer_auth_refreshes_token_each_call():
+    """Test that _AutoRefreshBearerAuth calls get_token on every invocation.
+
+    The Azure SDK caches tokens internally and only does a real refresh
+    when the cached token is near expiry, so calling get_token() on
+    every HTTP request is both correct and efficient.
+    """
+    mock_credential = MagicMock()
+    mock_credential.get_token.return_value.token = "token-1"
+
+    auth = _AutoRefreshBearerAuth(mock_credential, "api://scope/.default")
+
+    req1 = MagicMock(headers={})
+    auth(req1)
+    assert req1.headers["Authorization"] == "Bearer token-1"
+
+    # Simulate token refresh
+    mock_credential.get_token.return_value.token = "token-2"
+    req2 = MagicMock(headers={})
+    auth(req2)
+    assert req2.headers["Authorization"] == "Bearer token-2"
+
+    assert mock_credential.get_token.call_count == 2
 
 
 # ---------------------------------------------------------------------------
@@ -643,31 +673,26 @@ def test_bearer_auth_sets_authorization_header():
 # ---------------------------------------------------------------------------
 
 
-def test_azure_auto_refresh_auth_refreshes_token_on_each_call():
-    """Test that set_http_session fetches a fresh token on every invocation.
+def test_azure_auto_refresh_auth_sets_auto_refresh_bearer():
+    """Test that set_http_session installs an _AutoRefreshBearerAuth on the session.
 
     This is the core value of AzureAutoRefreshAuthentication over a static
-    JWTAuthentication: long-running MCP servers must refresh tokens before
-    they expire. Each call to set_http_session should obtain a new token.
+    JWTAuthentication: the session auth callable will fetch a fresh token
+    on every HTTP request, so long-running MCP servers never use expired tokens.
     """
     mock_credential = MagicMock()
-    mock_credential.get_token.return_value.token = "fresh-token-1"
 
     auth = AzureAutoRefreshAuthentication(mock_credential, "api://scope/.default")
     session = MagicMock()
 
     result = auth.set_http_session(session)
 
-    # Verify it called get_token with the correct scope
-    mock_credential.get_token.assert_called_once_with("api://scope/.default")
-    # Verify the session was returned with auth set
+    # Verify the session was returned with an _AutoRefreshBearerAuth auth set
     assert result is session
-    assert session.auth is not None
+    assert isinstance(session.auth, _AutoRefreshBearerAuth)
 
-    # Simulate a second request — token should be fetched again
-    mock_credential.get_token.return_value.token = "fresh-token-2"
-    auth.set_http_session(session)
-    assert mock_credential.get_token.call_count == 2
+    # get_token should NOT have been called yet — it's deferred to request time
+    mock_credential.get_token.assert_not_called()
 
 
 def test_azure_auto_refresh_auth_get_exceptions_returns_empty():

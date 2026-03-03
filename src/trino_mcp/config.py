@@ -12,14 +12,21 @@ from dotenv import load_dotenv
 from requests import Session
 
 
-class _BearerAuth:
-    """Bearer token auth for requests."""
+class _AutoRefreshBearerAuth:
+    """Bearer token auth that fetches a fresh token on every HTTP request.
 
-    def __init__(self, token: str):
-        self.token = token
+    The Azure SDK caches tokens internally and only performs a real refresh
+    when the cached token is near expiry, so calling ``get_token()`` on
+    every request is both correct and efficient.
+    """
+
+    def __init__(self, credential: Any, scope: str):
+        self._credential = credential
+        self._scope = scope
 
     def __call__(self, r: Any) -> Any:
-        r.headers["Authorization"] = f"Bearer {self.token}"
+        token = self._credential.get_token(self._scope).token
+        r.headers["Authorization"] = f"Bearer {token}"
         return r
 
 
@@ -36,8 +43,7 @@ class AzureAutoRefreshAuthentication(trino.auth.Authentication):
         self._scope = scope
 
     def set_http_session(self, http_session: Session) -> Session:
-        token = self._credential.get_token(self._scope).token
-        http_session.auth = _BearerAuth(token)
+        http_session.auth = _AutoRefreshBearerAuth(self._credential, self._scope)
         return http_session
 
     def get_exceptions(self) -> Tuple[Any, ...]:
