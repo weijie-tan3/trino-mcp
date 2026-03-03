@@ -628,3 +628,81 @@ def test_show_create_table_empty_result(config, mock_connection):
     result = client.show_create_table("catalog1", "schema1", "table1")
 
     assert result == ""
+
+
+# ---------------------------------------------------------------------------
+# Connection retry on failure (simulates expired token / stale connection)
+# ---------------------------------------------------------------------------
+
+
+def test_execute_cursor_retries_on_failure(config):
+    """Test that _execute_cursor reconnects and retries when the first attempt fails.
+
+    This simulates the scenario where an Azure token expires mid-session:
+    the first cursor.execute() raises an error, the client reconnects
+    (getting a fresh connection with a new token), and the retry succeeds.
+    """
+    with patch("trino_mcp.client.trino.dbapi.connect") as mock_connect:
+        # First connection — will fail on execute
+        stale_conn = MagicMock()
+        stale_cursor = MagicMock()
+        stale_cursor.execute.side_effect = Exception("HTTP 404 — token expired")
+        stale_conn.cursor.return_value = stale_cursor
+
+        # Second connection (after reconnect) — will succeed
+        fresh_conn = MagicMock()
+        fresh_cursor = MagicMock()
+        fresh_cursor.description = [("col1",)]
+        fresh_cursor.fetchall.return_value = [("value1",)]
+        fresh_conn.cursor.return_value = fresh_cursor
+
+        mock_connect.side_effect = [stale_conn, fresh_conn]
+
+        client = TrinoClient(config)
+        assert client.connection is stale_conn
+
+        columns, rows = client._execute_cursor("SELECT 1")
+
+        # Should have reconnected
+        assert client.connection is fresh_conn
+        assert columns == ["col1"]
+        assert rows == [("value1",)]
+        # Stale connection should have been closed
+        stale_conn.close.assert_called_once()
+
+
+def test_execute_cursor_no_retry_on_success(config):
+    """Test that _execute_cursor does NOT reconnect when the first attempt succeeds."""
+    with patch("trino_mcp.client.trino.dbapi.connect") as mock_connect:
+        conn = MagicMock()
+        cursor = MagicMock()
+        cursor.description = [("col1",)]
+        cursor.fetchall.return_value = [("ok",)]
+        conn.cursor.return_value = cursor
+        mock_connect.return_value = conn
+
+        client = TrinoClient(config)
+        columns, rows = client._execute_cursor("SELECT 1")
+
+        assert columns == ["col1"]
+        assert rows == [("ok",)]
+        # connect called only once (initial), no reconnect
+        assert mock_connect.call_count == 1
+
+
+def test_execute_cursor_raises_if_retry_also_fails(config):
+    """Test that _execute_cursor raises if both the original and retry fail."""
+    with patch("trino_mcp.client.trino.dbapi.connect") as mock_connect:
+        # Both connections fail
+        bad_conn = MagicMock()
+        bad_cursor = MagicMock()
+        bad_cursor.execute.side_effect = Exception("Trino is down")
+        bad_conn.cursor.return_value = bad_cursor
+
+        mock_connect.return_value = bad_conn
+
+        client = TrinoClient(config)
+
+        with pytest.raises(Exception, match="Trino is down"):
+            client._execute_cursor("SELECT 1")
+
