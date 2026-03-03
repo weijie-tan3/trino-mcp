@@ -2,14 +2,18 @@
 
 import base64
 import json
+import logging
 import os
 import sys
+import urllib.request
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 
 import trino.auth
 from dotenv import load_dotenv
 from requests import Session
+
+logger = logging.getLogger(__name__)
 
 
 class _AutoRefreshBearerAuth:
@@ -65,6 +69,37 @@ def _get_user_from_jwt(token: str) -> Optional[str]:
         return data.get("oid") or data.get("sub")
     except Exception:
         return None
+
+
+def _make_github_actions_oidc_fetcher(
+    audience: str = "api://AzureADTokenExchange",
+) -> Optional[Callable[[], str]]:
+    """Return a callable that fetches a fresh OIDC token from GitHub Actions.
+
+    GitHub Actions sets ``ACTIONS_ID_TOKEN_REQUEST_URL`` and
+    ``ACTIONS_ID_TOKEN_REQUEST_TOKEN`` when a workflow has
+    ``permissions: id-token: write``.  The callable returned here hits
+    that endpoint to obtain a fresh JWT assertion each time it is called,
+    which ``ClientAssertionCredential`` then exchanges for an Azure AD
+    token.
+
+    Returns ``None`` if the required environment variables are not set
+    (i.e. we are not running inside GitHub Actions with OIDC enabled).
+    """
+    request_url = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_URL")
+    request_token = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+    if not request_url or not request_token:
+        return None
+
+    def _fetch() -> str:
+        url = f"{request_url}&audience={audience}"
+        req = urllib.request.Request(
+            url, headers={"Authorization": f"bearer {request_token}"}
+        )
+        with urllib.request.urlopen(req) as resp:
+            return json.loads(resp.read().decode())["value"]
+
+    return _fetch
 
 
 @dataclass
@@ -171,13 +206,43 @@ def load_config(overrides: Optional[dict] = None) -> TrinoConfig:
         token = None
         working_credential = None
 
+        # 0. Try GitHub Actions OIDC (federated credential via
+        #    ACTIONS_ID_TOKEN_REQUEST_URL / ACTIONS_ID_TOKEN_REQUEST_TOKEN).
+        #    This is preferred in CI because it can fetch fresh OIDC tokens
+        #    indefinitely, whereas AzureCliCredential only holds a
+        #    short-lived token that cannot be refreshed in OIDC flows.
+        oidc_fetcher = _make_github_actions_oidc_fetcher()
+        if oidc_fetcher is not None:
+            client_id = _get("AZURE_CLIENT_ID")
+            tenant_id = _get("AZURE_TENANT_ID")
+            if client_id and tenant_id:
+                try:
+                    from azure.identity import ClientAssertionCredential
+
+                    credential = ClientAssertionCredential(
+                        tenant_id=tenant_id,
+                        client_id=client_id,
+                        func=oidc_fetcher,
+                    )
+                    token = credential.get_token(scope).token
+                    working_credential = credential
+                    logger.info(
+                        "Using GitHub Actions OIDC federated credential "
+                        "(ClientAssertionCredential)"
+                    )
+                except Exception as exc:
+                    logger.debug(
+                        "GitHub Actions OIDC credential failed: %s", exc
+                    )
+
         # 1. Try AzureCliCredential (works after `az login --service-principal`)
-        try:
-            credential = AzureCliCredential()
-            token = credential.get_token(scope).token
-            working_credential = credential
-        except Exception:
-            pass
+        if token is None:
+            try:
+                credential = AzureCliCredential()
+                token = credential.get_token(scope).token
+                working_credential = credential
+            except Exception:
+                pass
 
         # 2. Try ClientSecretCredential if env vars are set
         if token is None:
@@ -208,8 +273,10 @@ def load_config(overrides: Optional[dict] = None) -> TrinoConfig:
         if token is None or working_credential is None:
             raise ValueError(
                 "Failed to acquire Azure token. Either run "
-                "'az login --service-principal' or set AZURE_CLIENT_ID, "
-                "AZURE_CLIENT_SECRET, and AZURE_TENANT_ID environment variables."
+                "'az login --service-principal', set AZURE_CLIENT_ID, "
+                "AZURE_CLIENT_SECRET, and AZURE_TENANT_ID environment variables, "
+                "or use GitHub Actions OIDC with AZURE_CLIENT_ID and "
+                "AZURE_TENANT_ID (requires id-token: write permission)."
             )
 
         # Extract user identity (oid) from the JWT token to avoid
