@@ -30,6 +30,7 @@ class TrinoClient:
             schema=self.config.schema,
             http_scheme=self.config.http_scheme,
             auth=self.config.auth,
+            session_properties=self.config.session_properties,
             **(self.config.additional_kwargs or {}),
         )
 

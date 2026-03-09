@@ -1089,3 +1089,88 @@ def test_load_config_azure_spn_oidc_fails_falls_back_to_cli(
     mock_cli.get_token.assert_called_once_with("api://test-scope/.default")
     assert isinstance(config.auth, AzureAutoRefreshAuthentication)
     assert config.user == "cli-oid"
+
+
+# ---------------------------------------------------------------------------
+# load_config — session_properties
+# ---------------------------------------------------------------------------
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+    },
+)
+def test_load_config_session_properties_default():
+    """Test default session_properties is None."""
+    config = load_config()
+    assert config.session_properties is None
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "TRINO_SESSION_PROPERTIES": '{"query_max_run_time": "30s"}',
+    },
+)
+def test_load_config_session_properties_valid():
+    """Test loading session_properties from env var."""
+    config = load_config()
+    assert config.session_properties == {"query_max_run_time": "30s"}
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "TRINO_SESSION_PROPERTIES": "not-valid-json",
+    },
+)
+def test_load_config_session_properties_invalid_json():
+    """Test session_properties with invalid JSON raises error."""
+    with pytest.raises(ValueError, match="TRINO_SESSION_PROPERTIES must be valid JSON"):
+        load_config()
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "TRINO_SESSION_PROPERTIES": '["not", "a", "dict"]',
+    },
+)
+def test_load_config_session_properties_non_dict():
+    """Test session_properties rejects non-dict JSON."""
+    with pytest.raises(ValueError, match="TRINO_SESSION_PROPERTIES must be a JSON object"):
+        load_config()
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+    },
+)
+def test_load_config_session_properties_override():
+    """Test session_properties via overrides dict."""
+    config = load_config(
+        overrides={"TRINO_SESSION_PROPERTIES": '{"query_max_run_time": "60s"}'}
+    )
+    assert config.session_properties == {"query_max_run_time": "60s"}

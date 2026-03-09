@@ -68,6 +68,7 @@ _CLI_TO_ENV = {
     "azure_tenant_id": "AZURE_TENANT_ID",
     "allow_write_queries": "ALLOW_WRITE_QUERIES",
     "custom_watermark": "TRINO_MCP_CUSTOM_WATERMARK",
+    "session_properties": "TRINO_SESSION_PROPERTIES",
 }
 
 
@@ -119,6 +120,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help='JSON object for custom query watermark. Values can be literal strings '
              'or "env:VAR" to resolve from environment variables '
              '(TRINO_MCP_CUSTOM_WATERMARK)',
+    )
+
+    # Session properties
+    parser.add_argument(
+        "--session-properties",
+        help='JSON object of Trino session properties '
+             '(e.g. \'{"query_max_run_time": "30s"}\') '
+             '(TRINO_SESSION_PROPERTIES)',
     )
 
     return parser
