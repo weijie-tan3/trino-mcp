@@ -2,7 +2,10 @@
 
 import csv
 import json
+import logging
 import os
+import threading
+import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import trino
@@ -10,6 +13,12 @@ from trino.dbapi import Connection, Cursor
 
 from . import __version__
 from .config import TrinoConfig
+
+logger = logging.getLogger(__name__)
+
+
+class QueryTimeoutError(Exception):
+    """Raised when a query exceeds the configured timeout and is cancelled."""
 
 
 class TrinoClient:
@@ -69,13 +78,26 @@ class TrinoClient:
         raw row tuples directly from the cursor, avoiding any intermediate
         conversion.
 
+        When ``query_timeout_minutes`` is configured (> 0), the query runs
+        in a background thread with a deadline. If the deadline is exceeded
+        the query is cancelled via ``cursor.cancel()`` and a
+        ``QueryTimeoutError`` is raised.
+
         Args:
             query: The SQL query to execute
 
         Returns:
             A tuple of (columns, rows) for queries with results, or (None, None)
             for DDL/DML statements that produce no output.
+
+        Raises:
+            QueryTimeoutError: If the query exceeds the configured timeout.
         """
+        timeout_minutes = self.config.query_timeout_minutes
+        if timeout_minutes > 0:
+            return self._execute_cursor_with_timeout(query, timeout_minutes)
+
+        # No timeout — execute directly (original behaviour)
         watermarked_query = self._add_watermark(query)
         try:
             cursor: Cursor = self.connection.cursor()
@@ -91,6 +113,75 @@ class TrinoClient:
             rows = cursor.fetchall()
             return columns, rows
         return None, None
+
+    def _execute_cursor_with_timeout(
+        self, query: str, timeout_minutes: int
+    ) -> Tuple[Optional[List[str]], Optional[List[tuple]]]:
+        """Execute a query with a client-side timeout and automatic cancellation.
+
+        The query runs in a background thread. A polling loop monitors the
+        thread and enforces a deadline. If the deadline is exceeded the query
+        is cancelled server-side via ``cursor.cancel()``.
+
+        Args:
+            query: The SQL query to execute
+            timeout_minutes: Maximum run time in minutes before cancellation.
+
+        Returns:
+            A tuple of (columns, rows) or (None, None).
+
+        Raises:
+            QueryTimeoutError: If the query exceeds the timeout.
+        """
+        cursor: Cursor = self.connection.cursor()
+        watermarked_query = self._add_watermark(query)
+        result_holder: Dict[str, Any] = {}
+
+        def _run() -> None:
+            try:
+                cursor.execute(watermarked_query)
+                desc = cursor.description
+                if desc:
+                    result_holder["columns"] = [col[0] for col in desc]
+                    result_holder["rows"] = cursor.fetchall()
+                else:
+                    result_holder["columns"] = None
+                    result_holder["rows"] = None
+            except Exception as exc:
+                result_holder["error"] = exc
+
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
+
+        timeout_seconds = timeout_minutes * 60
+        deadline = time.monotonic() + timeout_seconds
+        poll_interval = 1  # seconds
+
+        while thread.is_alive() and time.monotonic() < deadline:
+            thread.join(timeout=poll_interval)
+
+        if thread.is_alive():
+            # Timeout exceeded — cancel the query on the Trino server.
+            logger.warning(
+                "Query exceeded %d-minute timeout, cancelling (query_id=%s)…",
+                timeout_minutes,
+                getattr(cursor, "query_id", "unknown"),
+            )
+            try:
+                cursor.cancel()
+            except Exception:
+                logger.debug("cursor.cancel() raised", exc_info=True)
+            thread.join(timeout=5)
+            raise QueryTimeoutError(
+                f"Query cancelled after exceeding the {timeout_minutes}-minute timeout. "
+                "Consider optimising the query or increasing QUERY_TIMEOUT_MINUTES."
+            )
+
+        # Thread finished within the deadline.
+        if "error" in result_holder:
+            raise result_holder["error"]
+
+        return result_holder.get("columns"), result_holder.get("rows")
 
     def execute_query(self, query: str) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
         """Execute a SQL query and return results as Python data structures.

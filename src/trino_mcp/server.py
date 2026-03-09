@@ -26,7 +26,7 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 from .config import load_config
-from .client import TrinoClient
+from .client import QueryTimeoutError, TrinoClient
 
 # Setup logging
 logging.basicConfig(
@@ -69,6 +69,7 @@ _CLI_TO_ENV = {
     "allow_write_queries": "ALLOW_WRITE_QUERIES",
     "custom_watermark": "TRINO_MCP_CUSTOM_WATERMARK",
     "session_properties": "TRINO_SESSION_PROPERTIES",
+    "query_timeout_minutes": "QUERY_TIMEOUT_MINUTES",
 }
 
 
@@ -128,6 +129,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help='JSON object of Trino session properties '
              '(e.g. \'{"query_max_run_time": "30s"}\') '
              '(TRINO_SESSION_PROPERTIES)',
+    )
+
+    # Query timeout
+    parser.add_argument(
+        "--query-timeout-minutes",
+        help="Client-side query timeout in minutes. Queries exceeding this are "
+             "cancelled automatically. 0 disables. (default: 5) "
+             "(QUERY_TIMEOUT_MINUTES)",
     )
 
     return parser
@@ -262,6 +271,9 @@ def _try_execute_query(query: str, output_file: str = "") -> str:
         result = client.execute_query_json(query)
         logger.debug("Query executed successfully")
         return result
+    except QueryTimeoutError as e:
+        logger.warning(f"Query timed out: {str(e)}")
+        return f"Error: {str(e)}"
     except Exception as e:
         logger.error(f"Error executing query: {str(e)}", exc_info=True)
         return f"Error executing query: {str(e)}"

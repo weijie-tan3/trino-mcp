@@ -1174,3 +1174,70 @@ def test_load_config_session_properties_override():
         overrides={"TRINO_SESSION_PROPERTIES": '{"query_max_run_time": "60s"}'}
     )
     assert config.session_properties == {"query_max_run_time": "60s"}
+
+
+# ---------------------------------------------------------------------------
+# load_config — query_timeout_minutes
+# ---------------------------------------------------------------------------
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+    },
+)
+def test_load_config_query_timeout_minutes_default():
+    """Test default query_timeout_minutes is 5."""
+    config = load_config()
+    assert config.query_timeout_minutes == 5
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "QUERY_TIMEOUT_MINUTES": "10",
+    },
+)
+def test_load_config_query_timeout_minutes_custom():
+    """Test custom query_timeout_minutes from env var."""
+    config = load_config()
+    assert config.query_timeout_minutes == 10
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "QUERY_TIMEOUT_MINUTES": "0",
+    },
+)
+def test_load_config_query_timeout_minutes_disabled():
+    """Test query_timeout_minutes=0 disables timeout."""
+    config = load_config()
+    assert config.query_timeout_minutes == 0
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+    },
+)
+def test_load_config_query_timeout_minutes_override():
+    """Test query_timeout_minutes via overrides dict."""
+    config = load_config(overrides={"QUERY_TIMEOUT_MINUTES": "3"})
+    assert config.query_timeout_minutes == 3

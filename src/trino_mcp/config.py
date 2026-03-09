@@ -117,6 +117,7 @@ class TrinoConfig:
     allow_write_queries: bool = False
     custom_watermark: Optional[dict] = None
     session_properties: Optional[dict] = None
+    query_timeout_minutes: int = 5
 
 
 def load_config(overrides: Optional[dict] = None) -> TrinoConfig:
@@ -304,6 +305,9 @@ def load_config(overrides: Optional[dict] = None) -> TrinoConfig:
         "yes",
     )
 
+    # Query timeout (minutes). 0 disables client-side timeout enforcement.
+    query_timeout_minutes = int(_get("QUERY_TIMEOUT_MINUTES", "5"))
+
     # Optional Trino session properties passed to the connection (JSON dict).
     # e.g. '{"query_max_run_time": "30s"}'
     session_properties = None
@@ -357,4 +361,5 @@ def load_config(overrides: Optional[dict] = None) -> TrinoConfig:
         allow_write_queries=allow_write_queries,
         custom_watermark=custom_watermark,
         session_properties=session_properties,
+        query_timeout_minutes=query_timeout_minutes,
     )

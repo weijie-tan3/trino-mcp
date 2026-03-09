@@ -616,3 +616,24 @@ def test_main_cli_args_passed_as_overrides(mock_init, mock_mcp):
     mock_mcp.run.assert_called_once()
     # Environment should NOT have been mutated
     assert os.environ.get("TRINO_HOST") == old_host
+
+
+# ---------------------------------------------------------------------------
+# QueryTimeoutError handling in _try_execute_query
+# ---------------------------------------------------------------------------
+
+
+@patch("trino_mcp.server.client")
+def test_try_execute_query_handles_timeout(mock_client):
+    """Test that _try_execute_query catches QueryTimeoutError."""
+    from trino_mcp.client import QueryTimeoutError
+    from trino_mcp.server import _try_execute_query
+
+    mock_client.execute_query_json.side_effect = QueryTimeoutError(
+        "Query cancelled after exceeding the 5-minute timeout."
+    )
+
+    result = _try_execute_query("SELECT slow()")
+
+    assert "timeout" in result.lower()
+    assert "Error" in result
