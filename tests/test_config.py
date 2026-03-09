@@ -1089,3 +1089,206 @@ def test_load_config_azure_spn_oidc_fails_falls_back_to_cli(
     mock_cli.get_token.assert_called_once_with("api://test-scope/.default")
     assert isinstance(config.auth, AzureAutoRefreshAuthentication)
     assert config.user == "cli-oid"
+
+
+# ---------------------------------------------------------------------------
+# load_config — query_timeout_minutes
+# ---------------------------------------------------------------------------
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+    },
+)
+def test_load_config_query_timeout_minutes_default():
+    """Test default query_timeout_minutes is 5."""
+    config = load_config()
+    assert config.query_timeout_minutes == 5
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "QUERY_TIMEOUT_MINUTES": "10",
+    },
+)
+def test_load_config_query_timeout_minutes_custom():
+    """Test custom query_timeout_minutes from env var."""
+    config = load_config()
+    assert config.query_timeout_minutes == 10
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "QUERY_TIMEOUT_MINUTES": "0",
+    },
+)
+def test_load_config_query_timeout_minutes_disabled():
+    """Test query_timeout_minutes=0 disables timeout."""
+    config = load_config()
+    assert config.query_timeout_minutes == 0
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+    },
+)
+def test_load_config_query_timeout_minutes_override():
+    """Test query_timeout_minutes via overrides dict."""
+    config = load_config(overrides={"QUERY_TIMEOUT_MINUTES": "3"})
+    assert config.query_timeout_minutes == 3
+
+
+# ---------------------------------------------------------------------------
+# load_config — max_concurrent_queries
+# ---------------------------------------------------------------------------
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+    },
+)
+def test_load_config_max_concurrent_queries_default():
+    """Test default max_concurrent_queries is 1."""
+    config = load_config()
+    assert config.max_concurrent_queries == 1
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "MAX_CONCURRENT_QUERIES": "3",
+    },
+)
+def test_load_config_max_concurrent_queries_custom():
+    """Test custom max_concurrent_queries from env var."""
+    config = load_config()
+    assert config.max_concurrent_queries == 3
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+    },
+)
+def test_load_config_max_concurrent_queries_override():
+    """Test max_concurrent_queries via overrides dict."""
+    config = load_config(overrides={"MAX_CONCURRENT_QUERIES": "5"})
+    assert config.max_concurrent_queries == 5
+
+
+# ---------------------------------------------------------------------------
+# load_config — session_properties
+# ---------------------------------------------------------------------------
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+    },
+)
+def test_load_config_session_properties_default():
+    """Test default session_properties is None."""
+    config = load_config()
+    assert config.session_properties is None
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "TRINO_SESSION_PROPERTIES": '{"query_max_run_time": "30s"}',
+    },
+)
+def test_load_config_session_properties_valid():
+    """Test loading session_properties from env var."""
+    config = load_config()
+    assert config.session_properties == {"query_max_run_time": "30s"}
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "TRINO_SESSION_PROPERTIES": "not-valid-json",
+    },
+)
+def test_load_config_session_properties_invalid_json():
+    """Test session_properties with invalid JSON raises error."""
+    with pytest.raises(ValueError, match="TRINO_SESSION_PROPERTIES must be valid JSON"):
+        load_config()
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "TRINO_SESSION_PROPERTIES": '["not", "a", "dict"]',
+    },
+)
+def test_load_config_session_properties_non_dict():
+    """Test session_properties rejects non-dict JSON."""
+    with pytest.raises(ValueError, match="TRINO_SESSION_PROPERTIES must be a JSON object"):
+        load_config()
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+    },
+)
+def test_load_config_session_properties_override():
+    """Test session_properties via overrides dict."""
+    config = load_config(
+        overrides={"TRINO_SESSION_PROPERTIES": '{"query_max_run_time": "60s"}'}
+    )
+    assert config.session_properties == {"query_max_run_time": "60s"}

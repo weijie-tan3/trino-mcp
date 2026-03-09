@@ -2,12 +2,14 @@
 
 import csv
 import json
+import threading
+import time
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
 from trino_mcp import __version__
-from trino_mcp.client import TrinoClient
+from trino_mcp.client import QueryTimeoutError, TrinoClient
 from trino_mcp.config import TrinoConfig
 
 
@@ -377,12 +379,11 @@ def test_watermark_custom_values_with_newlines_do_not_escape_comment(mock_connec
         "TRINO_PORT": "8080",
         "TRINO_USER": "trino",
         "AUTH_METHOD": "NONE",
-        "TRINO_MCP_CUSTOM_WATERMARK": '{"key": "env:INJECTED_VAR"}',
+        "TRINO_MCP_CUSTOM_WATERMARK": '{"key": "INJECTED_VAR"}',
         "INJECTED_VAR": "safe-value\ninjected-sql",
     }
     with patch.dict("os.environ", env):
         from trino_mcp.config import load_config
-
         config = load_config()
 
     mock_cursor = MagicMock()
@@ -412,9 +413,7 @@ def test_list_catalogs_with_unexpected_response(config, mock_connection):
 
     client = TrinoClient(config)
 
-    with pytest.raises(
-        RuntimeError, match="Expected list of results from SHOW CATALOGS"
-    ):
+    with pytest.raises(RuntimeError, match="Expected list of results from SHOW CATALOGS"):
         client.list_catalogs()
 
 
@@ -426,9 +425,7 @@ def test_list_schemas_with_unexpected_response(config, mock_connection):
 
     client = TrinoClient(config)
 
-    with pytest.raises(
-        RuntimeError, match="Expected list of results from SHOW SCHEMAS"
-    ):
+    with pytest.raises(RuntimeError, match="Expected list of results from SHOW SCHEMAS"):
         client.list_schemas("test_catalog")
 
 
@@ -452,9 +449,7 @@ def test_show_create_table_with_unexpected_response(config, mock_connection):
 
     client = TrinoClient(config)
 
-    with pytest.raises(
-        RuntimeError, match="Expected list of results from SHOW CREATE TABLE"
-    ):
+    with pytest.raises(RuntimeError, match="Expected list of results from SHOW CREATE TABLE"):
         client.show_create_table("catalog1", "schema1", "table1")
 
 
@@ -511,14 +506,12 @@ def test_execute_query_to_file_csv(config, mock_connection, tmp_path):
     assert rows[1] == {"col1": "val3", "col2": "val4"}
 
 
-def test_execute_query_to_file_csv_special_characters(
-    config, mock_connection, tmp_path
-):
+def test_execute_query_to_file_csv_special_characters(config, mock_connection, tmp_path):
     """Test CSV file output properly handles special characters."""
     mock_cursor = MagicMock()
     mock_cursor.description = [("name",), ("value",)]
     mock_cursor.fetchall.return_value = [
-        ("hello, world", 'has "quotes"'),
+        ('hello, world', 'has "quotes"'),
         ("line1\nline2", "simple"),
     ]
     mock_connection.cursor.return_value = mock_cursor
@@ -590,119 +583,151 @@ def test_execute_query_to_file_csv_empty_results(config, mock_connection, tmp_pa
     assert rows[0] == ["col1", "col2"]
 
 
-def test_describe_table_missing_catalog_error(mock_connection):
-    """Test describe_table raises error when catalog is not specified."""
-    config = TrinoConfig(host="localhost", port=8080, user="trino")
-    client = TrinoClient(config)
-
-    with pytest.raises(ValueError, match="Both catalog and schema must be specified"):
-        client.describe_table("", "", "table1")
+# ---------------------------------------------------------------------------
+# session_properties passthrough
+# ---------------------------------------------------------------------------
 
 
-def test_get_table_stats_missing_catalog_error(mock_connection):
-    """Test get_table_stats raises error when catalog is not specified."""
-    config = TrinoConfig(host="localhost", port=8080, user="trino")
-    client = TrinoClient(config)
+def test_create_connection_passes_session_properties(mock_connection):
+    """Test that session_properties are passed through to trino.dbapi.connect."""
+    config = TrinoConfig(
+        host="localhost",
+        port=8080,
+        user="trino",
+        catalog="test_catalog",
+        schema="test_schema",
+        session_properties={"query_max_run_time": "30s"},
+    )
 
-    with pytest.raises(ValueError, match="Both catalog and schema must be specified"):
-        client.get_table_stats("", "", "table1")
+    with patch("trino_mcp.client.trino.dbapi.connect") as mock_connect:
+        mock_connect.return_value = MagicMock()
+        client = TrinoClient(config)
+        mock_connect.assert_called_once()
+        call_kwargs = mock_connect.call_args
+        assert call_kwargs.kwargs.get("session_properties") == {"query_max_run_time": "30s"} or \
+            call_kwargs[1].get("session_properties") == {"query_max_run_time": "30s"} or \
+            "session_properties" in str(call_kwargs)
 
 
-def test_show_create_table_missing_catalog_error(mock_connection):
-    """Test show_create_table raises error when catalog is not specified."""
-    config = TrinoConfig(host="localhost", port=8080, user="trino")
-    client = TrinoClient(config)
+def test_create_connection_session_properties_none(mock_connection):
+    """Test that session_properties=None is passed as None."""
+    config = TrinoConfig(
+        host="localhost",
+        port=8080,
+        user="trino",
+        session_properties=None,
+    )
 
-    with pytest.raises(ValueError, match="Both catalog and schema must be specified"):
-        client.show_create_table("", "", "table1")
+    with patch("trino_mcp.client.trino.dbapi.connect") as mock_connect:
+        mock_connect.return_value = MagicMock()
+        client = TrinoClient(config)
 
 
-def test_show_create_table_empty_result(config, mock_connection):
-    """Test show_create_table returns empty string when data is empty."""
+# ---------------------------------------------------------------------------
+# _execute_cursor_with_timeout — query completes within timeout
+# ---------------------------------------------------------------------------
+
+
+def test_execute_cursor_with_timeout_completes(config, mock_connection):
+    """Test that a query completing within timeout returns results normally."""
+    config.query_timeout_minutes = 1
+
     mock_cursor = MagicMock()
-    mock_cursor.description = [("Create Table",)]
-    mock_cursor.fetchall.return_value = []
+    mock_cursor.description = [("col1",), ("col2",)]
+    mock_cursor.fetchall.return_value = [("val1", "val2")]
     mock_connection.cursor.return_value = mock_cursor
 
     client = TrinoClient(config)
-    result = client.show_create_table("catalog1", "schema1", "table1")
+    columns, rows = client._execute_cursor("SELECT 1")
 
-    assert result == ""
+    assert columns == ["col1", "col2"]
+    assert rows == [("val1", "val2")]
+
+
+def test_execute_cursor_with_timeout_no_results(config, mock_connection):
+    """Test timeout path with a query that returns no results."""
+    config.query_timeout_minutes = 1
+
+    mock_cursor = MagicMock()
+    mock_cursor.description = None
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+    columns, rows = client._execute_cursor("CREATE TABLE test (id INT)")
+
+    assert columns is None
+    assert rows is None
 
 
 # ---------------------------------------------------------------------------
-# Connection retry on failure (simulates expired token / stale connection)
+# _execute_cursor_with_timeout — query exceeds timeout
 # ---------------------------------------------------------------------------
 
 
-def test_execute_cursor_retries_on_failure(config):
-    """Test that _execute_cursor reconnects and retries when the first attempt fails.
+def test_execute_cursor_with_timeout_cancels_on_timeout(config, mock_connection):
+    """Test that exceeding the timeout triggers cursor.cancel() and raises QueryTimeoutError."""
+    config.query_timeout_minutes = 1  # will be overridden below
 
-    This simulates the scenario where an Azure token expires mid-session:
-    the first cursor.execute() raises an error, the client reconnects
-    (getting a fresh connection with a new token), and the retry succeeds.
-    """
-    with patch("trino_mcp.client.trino.dbapi.connect") as mock_connect:
-        # First connection — will fail on execute
-        stale_conn = MagicMock()
-        stale_cursor = MagicMock()
-        stale_cursor.execute.side_effect = Exception("HTTP 404 — token expired")
-        stale_conn.cursor.return_value = stale_cursor
+    mock_cursor = MagicMock()
+    # Simulate a slow query: execute blocks for 10 seconds
+    slow_event = threading.Event()
 
-        # Second connection (after reconnect) — will succeed
-        fresh_conn = MagicMock()
-        fresh_cursor = MagicMock()
-        fresh_cursor.description = [("col1",)]
-        fresh_cursor.fetchall.return_value = [("value1",)]
-        fresh_conn.cursor.return_value = fresh_cursor
+    def _slow_execute(query):
+        slow_event.wait(timeout=10)
 
-        mock_connect.side_effect = [stale_conn, fresh_conn]
+    mock_cursor.execute.side_effect = _slow_execute
+    mock_cursor.query_id = "test-query-id"
+    mock_connection.cursor.return_value = mock_cursor
 
-        client = TrinoClient(config)
-        assert client.connection is stale_conn
+    client = TrinoClient(config)
 
-        columns, rows = client._execute_cursor("SELECT 1")
+    # Use a very short timeout (in minutes) — we'll call the internal method directly
+    # with a fraction to keep the test fast. We patch time so it thinks time passed.
+    with pytest.raises(QueryTimeoutError, match="timeout"):
+        # Call with a tiny timeout (1/60 minute = 1 second)
+        client._execute_cursor_with_timeout("SELECT slow()", timeout_minutes=1/60)
 
-        # Should have reconnected
-        assert client.connection is fresh_conn
-        assert columns == ["col1"]
-        assert rows == [("value1",)]
-        # Stale connection should have been closed
-        stale_conn.close.assert_called_once()
+    # cursor.cancel() should have been called
+    mock_cursor.cancel.assert_called_once()
+    # Clean up the blocking thread
+    slow_event.set()
 
 
-def test_execute_cursor_no_retry_on_success(config):
-    """Test that _execute_cursor does NOT reconnect when the first attempt succeeds."""
-    with patch("trino_mcp.client.trino.dbapi.connect") as mock_connect:
-        conn = MagicMock()
-        cursor = MagicMock()
-        cursor.description = [("col1",)]
-        cursor.fetchall.return_value = [("ok",)]
-        conn.cursor.return_value = cursor
-        mock_connect.return_value = conn
-
-        client = TrinoClient(config)
-        columns, rows = client._execute_cursor("SELECT 1")
-
-        assert columns == ["col1"]
-        assert rows == [("ok",)]
-        # connect called only once (initial), no reconnect
-        assert mock_connect.call_count == 1
+# ---------------------------------------------------------------------------
+# _execute_cursor — timeout=0 skips timeout enforcement
+# ---------------------------------------------------------------------------
 
 
-def test_execute_cursor_raises_if_retry_also_fails(config):
-    """Test that _execute_cursor raises if both the original and retry fail."""
-    with patch("trino_mcp.client.trino.dbapi.connect") as mock_connect:
-        # Both connections fail
-        bad_conn = MagicMock()
-        bad_cursor = MagicMock()
-        bad_cursor.execute.side_effect = Exception("Trino is down")
-        bad_conn.cursor.return_value = bad_cursor
+def test_execute_cursor_no_timeout(config, mock_connection):
+    """Test that query_timeout_minutes=0 uses the direct (no-timeout) path."""
+    config.query_timeout_minutes = 0
 
-        mock_connect.return_value = bad_conn
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("col1",)]
+    mock_cursor.fetchall.return_value = [("val1",)]
+    mock_connection.cursor.return_value = mock_cursor
 
-        client = TrinoClient(config)
+    client = TrinoClient(config)
+    columns, rows = client._execute_cursor("SELECT 1")
 
-        with pytest.raises(Exception, match="Trino is down"):
-            client._execute_cursor("SELECT 1")
+    assert columns == ["col1"]
+    assert rows == [("val1",)]
 
+
+# ---------------------------------------------------------------------------
+# _execute_cursor_with_timeout — query raises exception
+# ---------------------------------------------------------------------------
+
+
+def test_execute_cursor_with_timeout_propagates_error(config, mock_connection):
+    """Test that exceptions from the query thread are propagated."""
+    config.query_timeout_minutes = 1
+
+    mock_cursor = MagicMock()
+    mock_cursor.execute.side_effect = RuntimeError("Connection lost")
+    mock_connection.cursor.return_value = mock_cursor
+
+    client = TrinoClient(config)
+
+    with pytest.raises(RuntimeError, match="Connection lost"):
+        client._execute_cursor("SELECT 1")

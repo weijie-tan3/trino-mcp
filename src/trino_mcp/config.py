@@ -116,6 +116,9 @@ class TrinoConfig:
     additional_kwargs: Optional[dict] = None
     allow_write_queries: bool = False
     custom_watermark: Optional[dict] = None
+    query_timeout_minutes: int = 5
+    max_concurrent_queries: int = 1
+    session_properties: Optional[dict] = None
 
 
 def load_config(overrides: Optional[dict] = None) -> TrinoConfig:
@@ -303,6 +306,25 @@ def load_config(overrides: Optional[dict] = None) -> TrinoConfig:
         "yes",
     )
 
+    # Query timeout (minutes). 0 disables client-side timeout enforcement.
+    query_timeout_minutes = int(_get("QUERY_TIMEOUT_MINUTES", "5"))
+
+    # Maximum number of concurrent tool calls. Additional calls are rejected
+    # immediately with an error message asking the caller to wait.
+    max_concurrent_queries = int(_get("MAX_CONCURRENT_QUERIES", "1"))
+
+    # Optional Trino session properties passed to the connection (JSON dict).
+    # e.g. '{"query_max_run_time": "30s"}'
+    session_properties = None
+    session_properties_raw = _get("TRINO_SESSION_PROPERTIES")
+    if session_properties_raw:
+        try:
+            session_properties = json.loads(session_properties_raw)
+            if not isinstance(session_properties, dict):
+                raise ValueError("TRINO_SESSION_PROPERTIES must be a JSON object")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"TRINO_SESSION_PROPERTIES must be valid JSON: {e}")
+
     # Custom watermark configuration
     # Values can be either:
     #   - A literal string (used as-is), e.g. "my-app"
@@ -343,4 +365,7 @@ def load_config(overrides: Optional[dict] = None) -> TrinoConfig:
         additional_kwargs=additional_kwargs,
         allow_write_queries=allow_write_queries,
         custom_watermark=custom_watermark,
+        query_timeout_minutes=query_timeout_minutes,
+        max_concurrent_queries=max_concurrent_queries,
+        session_properties=session_properties,
     )
