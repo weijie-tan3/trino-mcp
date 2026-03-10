@@ -170,24 +170,30 @@ class TrinoClient:
             )
 
             # cursor.cancel() relies on _next_uri which may not be set yet
-            # if execute() is still in its initial HTTP request.  As a
-            # fallback, wait briefly for query_id and cancel via the REST
-            # API directly (DELETE /v1/query/{query_id}).
-            cancelled = False
+            # if execute() is still in its initial HTTP request.  It silently
+            # no-ops when _next_uri is None, so we always also attempt a
+            # direct REST API cancel as a reliable fallback.
             try:
                 cursor.cancel()
-                cancelled = True
             except Exception:
                 logger.debug("cursor.cancel() raised", exc_info=True)
 
-            if not cancelled and query_id:
+            if query_id:
                 try:
-                    import requests as _requests
                     scheme = self.config.http_scheme
                     host = self.config.host
                     port = self.config.port
                     url = f"{scheme}://{host}:{port}/v1/query/{query_id}"
-                    resp = _requests.delete(url, timeout=5)
+                    # Re-use the connection's internal HTTP session so auth
+                    # headers (OAuth2, Bearer, etc.) are included automatically.
+                    http_session = getattr(
+                        getattr(cursor, "_request", None), "_http_session", None
+                    )
+                    if http_session is not None:
+                        resp = http_session.delete(url, timeout=5)
+                    else:
+                        import requests as _requests
+                        resp = _requests.delete(url, timeout=5)
                     logger.debug("Direct cancel DELETE %s → %s", url, resp.status_code)
                 except Exception:
                     logger.debug("Direct cancel via REST API failed", exc_info=True)
