@@ -115,7 +115,7 @@ class TrinoClient:
         return None, None
 
     def _execute_cursor_with_timeout(
-        self, query: str, timeout_minutes: int
+        self, query: str, timeout_minutes: float
     ) -> Tuple[Optional[List[str]], Optional[List[tuple]]]:
         """Execute a query with a client-side timeout and automatic cancellation.
 
@@ -162,19 +162,49 @@ class TrinoClient:
 
         if thread.is_alive():
             # Timeout exceeded — cancel the query on the Trino server.
+            query_id = getattr(cursor, "query_id", None)
             logger.warning(
-                "Query exceeded %d-minute timeout, cancelling (query_id=%s)…",
+                "Query exceeded %g-minute timeout, cancelling (query_id=%s)…",
                 timeout_minutes,
-                getattr(cursor, "query_id", "unknown"),
+                query_id or "unknown",
             )
+
+            # cursor.cancel() relies on _next_uri which may not be set yet
+            # if execute() is still in its initial HTTP request.  It silently
+            # no-ops when _next_uri is None, so we always also attempt a
+            # direct REST API cancel as a reliable fallback.
             try:
                 cursor.cancel()
             except Exception:
                 logger.debug("cursor.cancel() raised", exc_info=True)
+
+            if query_id:
+                try:
+                    scheme = self.config.http_scheme
+                    host = self.config.host
+                    port = self.config.port
+                    url = f"{scheme}://{host}:{port}/v1/query/{query_id}"
+                    # Re-use the connection's internal HTTP session so auth
+                    # headers (OAuth2, Bearer, etc.) are included automatically.
+                    http_session = getattr(
+                        getattr(cursor, "_request", None), "_http_session", None
+                    )
+                    if http_session is not None:
+                        resp = http_session.delete(url, timeout=5)
+                    else:
+                        import requests as _requests
+                        resp = _requests.delete(url, timeout=5)
+                    logger.debug("Direct cancel DELETE %s → %s", url, resp.status_code)
+                except Exception:
+                    logger.debug("Direct cancel via REST API failed", exc_info=True)
+
             thread.join(timeout=5)
             raise QueryTimeoutError(
-                f"Query cancelled after exceeding the {timeout_minutes}-minute timeout. "
-                "Consider optimising the query or increasing QUERY_TIMEOUT_MINUTES."
+                f"Query exceeded the {timeout_minutes}-minute timeout configured for this server "
+                f"and was cancelled (query_id={query_id or 'unknown'}). "
+                "Please revise your query to run faster — add WHERE filters, use LIMIT, "
+                "or avoid SELECT * on large tables. "
+                "If you need a longer timeout, increase QUERY_TIMEOUT_MINUTES."
             )
 
         # Thread finished within the deadline.

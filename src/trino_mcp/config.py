@@ -117,7 +117,7 @@ class TrinoConfig:
     allow_write_queries: bool = False
     custom_watermark: Optional[dict] = None
     session_properties: Optional[dict] = None
-    query_timeout_minutes: int = 5
+    query_timeout_minutes: float = 5
     max_concurrent_queries: int = 1
 
 
@@ -307,7 +307,7 @@ def load_config(overrides: Optional[dict] = None) -> TrinoConfig:
     )
 
     # Query timeout (minutes). 0 disables client-side timeout enforcement.
-    query_timeout_minutes = int(_get("QUERY_TIMEOUT_MINUTES", "5"))
+    query_timeout_minutes = float(_get("QUERY_TIMEOUT_MINUTES", "5"))
 
     # Maximum number of concurrent tool calls. Additional calls are rejected
     # immediately with an error message asking the caller to wait.

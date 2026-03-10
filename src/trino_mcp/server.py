@@ -575,7 +575,7 @@ def _init_config(overrides: Optional[dict] = None) -> None:
         "IMPORTANT CONSTRAINTS — read before calling tools:\n"
         f"• Concurrency limit: only {config.max_concurrent_queries} tool call(s) may run at a time. "
         "If you receive a concurrency-limit error, wait for the previous call to finish and retry.\n"
-        f"• Query timeout: queries that run longer than {config.query_timeout_minutes} minute(s) are "
+        f"• Query timeout: queries that run longer than {config.query_timeout_minutes:g} minute(s) are "
         "automatically cancelled. Write efficient queries — avoid SELECT * on large tables and add "
         "appropriate filters (WHERE, LIMIT).\n"
         "• Issue tool calls one at a time and wait for each result before issuing the next call."
