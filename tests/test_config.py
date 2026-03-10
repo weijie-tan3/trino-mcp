@@ -1241,3 +1241,54 @@ def test_load_config_query_timeout_minutes_override():
     """Test query_timeout_minutes via overrides dict."""
     config = load_config(overrides={"QUERY_TIMEOUT_MINUTES": "3"})
     assert config.query_timeout_minutes == 3
+
+
+# ---------------------------------------------------------------------------
+# load_config — max_concurrent_queries
+# ---------------------------------------------------------------------------
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+    },
+)
+def test_load_config_max_concurrent_queries_default():
+    """Test default max_concurrent_queries is 1."""
+    config = load_config()
+    assert config.max_concurrent_queries == 1
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+        "MAX_CONCURRENT_QUERIES": "3",
+    },
+)
+def test_load_config_max_concurrent_queries_custom():
+    """Test custom max_concurrent_queries from env var."""
+    config = load_config()
+    assert config.max_concurrent_queries == 3
+
+
+@patch.dict(
+    os.environ,
+    {
+        "TRINO_HOST": "localhost",
+        "TRINO_PORT": "8080",
+        "TRINO_USER": "trino",
+        "AUTH_METHOD": "NONE",
+    },
+)
+def test_load_config_max_concurrent_queries_override():
+    """Test max_concurrent_queries via overrides dict."""
+    config = load_config(overrides={"MAX_CONCURRENT_QUERIES": "5"})
+    assert config.max_concurrent_queries == 5

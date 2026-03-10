@@ -1,6 +1,7 @@
 """Trino MCP Server - Main server implementation."""
 
 import argparse
+import asyncio
 import logging
 import sys
 from typing import Annotated, Optional
@@ -40,6 +41,7 @@ logger = logging.getLogger(__name__)
 # When imported as a library (e.g. in tests), callers may set these directly.
 config = None
 client = None
+_query_semaphore = None  # Initialized in _init_config()
 
 # Initialize MCP server
 mcp = FastMCP(
@@ -70,6 +72,7 @@ _CLI_TO_ENV = {
     "custom_watermark": "TRINO_MCP_CUSTOM_WATERMARK",
     "session_properties": "TRINO_SESSION_PROPERTIES",
     "query_timeout_minutes": "QUERY_TIMEOUT_MINUTES",
+    "max_concurrent_queries": "MAX_CONCURRENT_QUERIES",
 }
 
 
@@ -137,6 +140,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Client-side query timeout in minutes. Queries exceeding this are "
              "cancelled automatically. 0 disables. (default: 5) "
              "(QUERY_TIMEOUT_MINUTES)",
+    )
+
+    # Concurrency
+    parser.add_argument(
+        "--max-concurrent-queries",
+        help="Maximum number of concurrent tool calls. Excess calls are rejected "
+             "immediately. (default: 1) (MAX_CONCURRENT_QUERIES)",
     )
 
     return parser
@@ -247,7 +257,7 @@ def _parse_table_identifier(table: str, catalog: str, schema: str) -> tuple:
         return (catalog, schema, table)
 
 
-def _try_execute_query(query: str, output_file: str = "") -> str:
+async def _try_execute_query(query: str, output_file: str = "") -> str:
     """Common function to execute a query.
 
     Args:
@@ -265,10 +275,10 @@ def _try_execute_query(query: str, output_file: str = "") -> str:
     """
     try:
         if output_file:
-            row_count = client.execute_query_to_file(query, output_file)
+            row_count = await asyncio.to_thread(client.execute_query_to_file, query, output_file)
             logger.debug(f"Query results written to {output_file} ({row_count} row(s))")
             return f"Query results written to '{output_file}' ({row_count} row(s))."
-        result = client.execute_query_json(query)
+        result = await asyncio.to_thread(client.execute_query_json, query)
         logger.debug("Query executed successfully")
         return result
     except QueryTimeoutError as e:
@@ -279,38 +289,59 @@ def _try_execute_query(query: str, output_file: str = "") -> str:
         return f"Error executing query: {str(e)}"
 
 
+def _concurrency_limit_message() -> str:
+    """Return the error message when all concurrent query slots are in use."""
+    n = config.max_concurrent_queries if config else 1
+    return (
+        f"Error: All {n} concurrent query slot(s) are in use. "
+        "Please wait for the previous tool call to complete before retrying."
+    )
+
+
 @mcp.tool()
-def list_catalogs() -> str:
+async def list_catalogs() -> str:
     """List all available Trino catalogs."""
-    logger.info("Listing catalogs...")
-    try:
-        catalogs = client.list_catalogs()
-        logger.debug(f"Found {len(catalogs)} catalogs")
-        return "\n".join(catalogs)
-    except Exception as e:
-        logger.error(f"Error listing catalogs: {str(e)}", exc_info=True)
-        return f"Error listing catalogs: {str(e)}"
+    if _query_semaphore is not None and _query_semaphore.locked():
+        return _concurrency_limit_message()
+    async with _query_semaphore:
+        logger.info("Listing catalogs...")
+        try:
+            catalogs = await asyncio.to_thread(client.list_catalogs)
+            logger.debug(f"Found {len(catalogs)} catalogs")
+            return "\n".join(catalogs)
+        except QueryTimeoutError as e:
+            logger.warning(f"Query timed out: {str(e)}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Error listing catalogs: {str(e)}", exc_info=True)
+            return f"Error listing catalogs: {str(e)}"
 
 
 @mcp.tool()
-def list_schemas(catalog: str = Field(description="The catalog name")) -> str:
+async def list_schemas(catalog: str = Field(description="The catalog name")) -> str:
     """List all schemas in a catalog.
 
     Args:
         catalog: The name of the catalog to list schemas from
     """
-    logger.info(f"Listing schemas for catalog: {catalog}")
-    try:
-        schemas = client.list_schemas(catalog)
-        logger.debug(f"Found {len(schemas)} schemas")
-        return "\n".join(schemas)
-    except Exception as e:
-        logger.error(f"Error listing schemas: {str(e)}", exc_info=True)
-        return f"Error listing schemas: {str(e)}"
+    if _query_semaphore is not None and _query_semaphore.locked():
+        return _concurrency_limit_message()
+    async with _query_semaphore:
+        logger.info(f"Listing schemas for catalog: {catalog}")
+        try:
+            schemas = await asyncio.to_thread(client.list_schemas, catalog)
+            logger.debug(f"Found {len(schemas)} schemas")
+            return "\n".join(schemas)
+        except QueryTimeoutError as e:
+            logger.warning(f"Query timed out: {str(e)}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Error listing schemas: {str(e)}", exc_info=True)
+            return f"Error listing schemas: {str(e)}"
 
 
 @mcp.tool()
-def list_tables(
+async def list_tables(
     catalog: str = Field(description="The catalog name"),
     schema: str = Field(description="The schema name"),
 ) -> str:
@@ -320,18 +351,24 @@ def list_tables(
         catalog: The name of the catalog
         schema: The name of the schema
     """
-    logger.info(f"Listing tables for {catalog}.{schema}")
-    try:
-        tables = client.list_tables(catalog, schema)
-        logger.debug(f"Found {len(tables)} tables")
-        return "\n".join(tables)
-    except Exception as e:
-        logger.error(f"Error listing tables: {str(e)}", exc_info=True)
-        return f"Error listing tables: {str(e)}"
+    if _query_semaphore is not None and _query_semaphore.locked():
+        return _concurrency_limit_message()
+    async with _query_semaphore:
+        logger.info(f"Listing tables for {catalog}.{schema}")
+        try:
+            tables = await asyncio.to_thread(client.list_tables, catalog, schema)
+            logger.debug(f"Found {len(tables)} tables")
+            return "\n".join(tables)
+        except QueryTimeoutError as e:
+            logger.warning(f"Query timed out: {str(e)}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Error listing tables: {str(e)}", exc_info=True)
+            return f"Error listing tables: {str(e)}"
 
 
 @mcp.tool()
-def describe_table(
+async def describe_table(
     table: str = Field(
         description="The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted for convenience."
     ),
@@ -347,19 +384,25 @@ def describe_table(
         catalog: The catalog name (optional if default is configured)
         schema: The schema name (optional if default is configured)
     """
-    logger.info(f"Describing table: {catalog}.{schema}.{table}")
-    try:
-        cat, sch, tbl = _parse_table_identifier(table, catalog, schema)
-        result = client.describe_table(cat, sch, tbl)
-        logger.debug(f"Table description retrieved successfully")
-        return result
-    except Exception as e:
-        logger.error(f"Error describing table: {str(e)}", exc_info=True)
-        return f"Error describing table: {str(e)}"
+    if _query_semaphore is not None and _query_semaphore.locked():
+        return _concurrency_limit_message()
+    async with _query_semaphore:
+        logger.info(f"Describing table: {catalog}.{schema}.{table}")
+        try:
+            cat, sch, tbl = _parse_table_identifier(table, catalog, schema)
+            result = await asyncio.to_thread(client.describe_table, cat, sch, tbl)
+            logger.debug(f"Table description retrieved successfully")
+            return result
+        except QueryTimeoutError as e:
+            logger.warning(f"Query timed out: {str(e)}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Error describing table: {str(e)}", exc_info=True)
+            return f"Error describing table: {str(e)}"
 
 
 @mcp.tool()
-def execute_query_read_only(
+async def execute_query_read_only(
     query: str = Field(description="The SQL query to execute (read-only)"),
     output_file: Annotated[
         str,
@@ -397,11 +440,14 @@ def execute_query_read_only(
         )
 
     # Execute the query using the common function
-    return _try_execute_query(query, output_file=output_file)
+    if _query_semaphore is not None and _query_semaphore.locked():
+        return _concurrency_limit_message()
+    async with _query_semaphore:
+        return await _try_execute_query(query, output_file=output_file)
 
 
 @mcp.tool()
-def execute_query(
+async def execute_query(
     query: str = Field(description="The SQL query to execute"),
     output_file: Annotated[
         str,
@@ -439,11 +485,14 @@ def execute_query(
         )
 
     # Execute the query using the common function
-    return _try_execute_query(query, output_file=output_file)
+    if _query_semaphore is not None and _query_semaphore.locked():
+        return _concurrency_limit_message()
+    async with _query_semaphore:
+        return await _try_execute_query(query, output_file=output_file)
 
 
 @mcp.tool()
-def show_create_table(
+async def show_create_table(
     table: str = Field(
         description="The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted for convenience."
     ),
@@ -459,19 +508,25 @@ def show_create_table(
         catalog: The catalog name (optional if default is configured)
         schema: The schema name (optional if default is configured)
     """
-    logger.info(f"Getting CREATE TABLE for: {catalog}.{schema}.{table}")
-    try:
-        cat, sch, tbl = _parse_table_identifier(table, catalog, schema)
-        result = client.show_create_table(cat, sch, tbl)
-        logger.debug(f"CREATE TABLE retrieved successfully")
-        return result
-    except Exception as e:
-        logger.error(f"Error showing CREATE TABLE: {str(e)}", exc_info=True)
-        return f"Error showing CREATE TABLE: {str(e)}"
+    if _query_semaphore is not None and _query_semaphore.locked():
+        return _concurrency_limit_message()
+    async with _query_semaphore:
+        logger.info(f"Getting CREATE TABLE for: {catalog}.{schema}.{table}")
+        try:
+            cat, sch, tbl = _parse_table_identifier(table, catalog, schema)
+            result = await asyncio.to_thread(client.show_create_table, cat, sch, tbl)
+            logger.debug(f"CREATE TABLE retrieved successfully")
+            return result
+        except QueryTimeoutError as e:
+            logger.warning(f"Query timed out: {str(e)}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Error showing CREATE TABLE: {str(e)}", exc_info=True)
+            return f"Error showing CREATE TABLE: {str(e)}"
 
 
 @mcp.tool()
-def get_table_stats(
+async def get_table_stats(
     table: str = Field(
         description="The table name (e.g. 'my_table'). Preferably just the table name; catalog and schema should be passed as separate parameters. Fully qualified names like 'catalog.schema.table' are also accepted for convenience."
     ),
@@ -487,15 +542,21 @@ def get_table_stats(
         catalog: The catalog name (optional if default is configured)
         schema: The schema name (optional if default is configured)
     """
-    logger.info(f"Getting table stats for: {catalog}.{schema}.{table}")
-    try:
-        cat, sch, tbl = _parse_table_identifier(table, catalog, schema)
-        result = client.get_table_stats(cat, sch, tbl)
-        logger.debug(f"Table stats retrieved successfully")
-        return result
-    except Exception as e:
-        logger.error(f"Error getting table stats: {str(e)}", exc_info=True)
-        return f"Error getting table stats: {str(e)}"
+    if _query_semaphore is not None and _query_semaphore.locked():
+        return _concurrency_limit_message()
+    async with _query_semaphore:
+        logger.info(f"Getting table stats for: {catalog}.{schema}.{table}")
+        try:
+            cat, sch, tbl = _parse_table_identifier(table, catalog, schema)
+            result = await asyncio.to_thread(client.get_table_stats, cat, sch, tbl)
+            logger.debug(f"Table stats retrieved successfully")
+            return result
+        except QueryTimeoutError as e:
+            logger.warning(f"Query timed out: {str(e)}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Error getting table stats: {str(e)}", exc_info=True)
+            return f"Error getting table stats: {str(e)}"
 
 
 def _init_config(overrides: Optional[dict] = None) -> None:
@@ -505,11 +566,26 @@ def _init_config(overrides: Optional[dict] = None) -> None:
         overrides: Optional dict of env-var-name → value that takes
                    precedence over environment variables and ``.env``.
     """
-    global config, client
+    global config, client, _query_semaphore
     logger.info("Loading Trino configuration...")
     config = load_config(overrides=overrides)
     logger.info(f"Connected to Trino at {config.host}:{config.port}")
     client = TrinoClient(config)
+
+    # Concurrency gate — limits how many tool calls can run at the same time.
+    _query_semaphore = asyncio.Semaphore(config.max_concurrent_queries)
+
+    # Update MCP instructions so agents know the constraints.
+    mcp._mcp_server.instructions = (
+        "A Model Context Protocol server for Trino query engine. "
+        "IMPORTANT CONSTRAINTS — read before calling tools:\n"
+        f"• Concurrency limit: only {config.max_concurrent_queries} tool call(s) may run at a time. "
+        "If you receive a concurrency-limit error, wait for the previous call to finish and retry.\n"
+        f"• Query timeout: queries that run longer than {config.query_timeout_minutes:g} minute(s) are "
+        "automatically cancelled. Write efficient queries — avoid SELECT * on large tables and add "
+        "appropriate filters (WHERE, LIMIT).\n"
+        "• Issue tool calls one at a time and wait for each result before issuing the next call."
+    )
 
 
 def main():
