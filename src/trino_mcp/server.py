@@ -257,7 +257,7 @@ def _parse_table_identifier(table: str, catalog: str, schema: str) -> tuple:
         return (catalog, schema, table)
 
 
-def _try_execute_query(query: str, output_file: str = "") -> str:
+async def _try_execute_query(query: str, output_file: str = "") -> str:
     """Common function to execute a query.
 
     Args:
@@ -275,10 +275,10 @@ def _try_execute_query(query: str, output_file: str = "") -> str:
     """
     try:
         if output_file:
-            row_count = client.execute_query_to_file(query, output_file)
+            row_count = await asyncio.to_thread(client.execute_query_to_file, query, output_file)
             logger.debug(f"Query results written to {output_file} ({row_count} row(s))")
             return f"Query results written to '{output_file}' ({row_count} row(s))."
-        result = client.execute_query_json(query)
+        result = await asyncio.to_thread(client.execute_query_json, query)
         logger.debug("Query executed successfully")
         return result
     except QueryTimeoutError as e:
@@ -306,7 +306,7 @@ async def list_catalogs() -> str:
     async with _query_semaphore:
         logger.info("Listing catalogs...")
         try:
-            catalogs = client.list_catalogs()
+            catalogs = await asyncio.to_thread(client.list_catalogs)
             logger.debug(f"Found {len(catalogs)} catalogs")
             return "\n".join(catalogs)
         except QueryTimeoutError as e:
@@ -329,7 +329,7 @@ async def list_schemas(catalog: str = Field(description="The catalog name")) -> 
     async with _query_semaphore:
         logger.info(f"Listing schemas for catalog: {catalog}")
         try:
-            schemas = client.list_schemas(catalog)
+            schemas = await asyncio.to_thread(client.list_schemas, catalog)
             logger.debug(f"Found {len(schemas)} schemas")
             return "\n".join(schemas)
         except QueryTimeoutError as e:
@@ -356,7 +356,7 @@ async def list_tables(
     async with _query_semaphore:
         logger.info(f"Listing tables for {catalog}.{schema}")
         try:
-            tables = client.list_tables(catalog, schema)
+            tables = await asyncio.to_thread(client.list_tables, catalog, schema)
             logger.debug(f"Found {len(tables)} tables")
             return "\n".join(tables)
         except QueryTimeoutError as e:
@@ -390,7 +390,7 @@ async def describe_table(
         logger.info(f"Describing table: {catalog}.{schema}.{table}")
         try:
             cat, sch, tbl = _parse_table_identifier(table, catalog, schema)
-            result = client.describe_table(cat, sch, tbl)
+            result = await asyncio.to_thread(client.describe_table, cat, sch, tbl)
             logger.debug(f"Table description retrieved successfully")
             return result
         except QueryTimeoutError as e:
@@ -443,7 +443,7 @@ async def execute_query_read_only(
     if _query_semaphore is not None and _query_semaphore.locked():
         return _concurrency_limit_message()
     async with _query_semaphore:
-        return _try_execute_query(query, output_file=output_file)
+        return await _try_execute_query(query, output_file=output_file)
 
 
 @mcp.tool()
@@ -488,7 +488,7 @@ async def execute_query(
     if _query_semaphore is not None and _query_semaphore.locked():
         return _concurrency_limit_message()
     async with _query_semaphore:
-        return _try_execute_query(query, output_file=output_file)
+        return await _try_execute_query(query, output_file=output_file)
 
 
 @mcp.tool()
@@ -508,15 +508,21 @@ async def show_create_table(
         catalog: The catalog name (optional if default is configured)
         schema: The schema name (optional if default is configured)
     """
-    logger.info(f"Getting CREATE TABLE for: {catalog}.{schema}.{table}")
-    try:
-        cat, sch, tbl = _parse_table_identifier(table, catalog, schema)
-        result = client.show_create_table(cat, sch, tbl)
-        logger.debug(f"CREATE TABLE retrieved successfully")
-        return result
-    except Exception as e:
-        logger.error(f"Error showing CREATE TABLE: {str(e)}", exc_info=True)
-        return f"Error showing CREATE TABLE: {str(e)}"
+    if _query_semaphore is not None and _query_semaphore.locked():
+        return _concurrency_limit_message()
+    async with _query_semaphore:
+        logger.info(f"Getting CREATE TABLE for: {catalog}.{schema}.{table}")
+        try:
+            cat, sch, tbl = _parse_table_identifier(table, catalog, schema)
+            result = await asyncio.to_thread(client.show_create_table, cat, sch, tbl)
+            logger.debug(f"CREATE TABLE retrieved successfully")
+            return result
+        except QueryTimeoutError as e:
+            logger.warning(f"Query timed out: {str(e)}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Error showing CREATE TABLE: {str(e)}", exc_info=True)
+            return f"Error showing CREATE TABLE: {str(e)}"
 
 
 @mcp.tool()
@@ -542,7 +548,7 @@ async def get_table_stats(
         logger.info(f"Getting table stats for: {catalog}.{schema}.{table}")
         try:
             cat, sch, tbl = _parse_table_identifier(table, catalog, schema)
-            result = client.get_table_stats(cat, sch, tbl)
+            result = await asyncio.to_thread(client.get_table_stats, cat, sch, tbl)
             logger.debug(f"Table stats retrieved successfully")
             return result
         except QueryTimeoutError as e:

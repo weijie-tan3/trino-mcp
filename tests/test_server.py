@@ -641,7 +641,7 @@ def test_try_execute_query_handles_timeout(mock_client):
         "Query cancelled after exceeding the 5-minute timeout."
     )
 
-    result = _try_execute_query("SELECT slow()")
+    result = asyncio.run(_try_execute_query("SELECT slow()"))
 
     assert "timeout" in result.lower()
     assert "Error" in result
