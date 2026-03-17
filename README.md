@@ -142,25 +142,55 @@ uvx trino-mcp \
     --azure-client-id your-client-id \
     --azure-client-secret your-client-secret \
     --azure-tenant-id your-tenant-id \
-    --allow-write-queries true
+    --allow-write-queries true \
+    --session-properties '{"query_max_run_time": "30s"}' \
+    --query-timeout-minutes 10 \
+    --max-concurrent-queries 2 \
+    --custom-watermark '{"team": "my-team"}'
 ```
 
 Run `uvx trino-mcp --help` for the full list of flags.
 
 ### Environment Variables
 
-Configure the server using environment variables or a `.env` file:
+Configure the server using environment variables or a `.env` file.
+
+#### Complete Configuration Reference
+
+| Env Variable | CLI Flag | Default | Description |
+|---|---|---|---|
+| **Connection** | | | |
+| `TRINO_HOST` | `--trino-host` | `localhost` | Trino server hostname |
+| `TRINO_PORT` | `--trino-port` | `8080` | Trino server port (auto-set to `443` for OAuth2/Azure SPN) |
+| `TRINO_USER` | `--trino-user` | `trino` | Username (auto-detected from JWT for Azure SPN) |
+| `TRINO_HTTP_SCHEME` | `--trino-http-scheme` | `http` | `http` or `https` (auto-set to `https` for OAuth2/Azure SPN) |
+| `TRINO_CATALOG` | `--trino-catalog` | *(none)* | Default catalog |
+| `TRINO_SCHEMA` | `--trino-schema` | *(none)* | Default schema |
+| **Authentication** | | | |
+| `AUTH_METHOD` | `--auth-method` | `PASSWORD` | Auth method: `PASSWORD`, `OAUTH2`, `AZURE_SPN`, or `NONE` |
+| `TRINO_PASSWORD` | `--trino-password` | *(none)* | Password (required when `AUTH_METHOD=PASSWORD`) |
+| `AZURE_SCOPE` | `--azure-scope` | *(none)* | Azure AD token scope (required for `AZURE_SPN`) |
+| `AZURE_CLIENT_ID` | `--azure-client-id` | *(none)* | Azure client ID (for `AZURE_SPN`) |
+| `AZURE_CLIENT_SECRET` | `--azure-client-secret` | *(none)* | Azure client secret (for `AZURE_SPN`) |
+| `AZURE_TENANT_ID` | `--azure-tenant-id` | *(none)* | Azure tenant ID (for `AZURE_SPN`) |
+| **Security & Limits** | | | |
+| `ALLOW_WRITE_QUERIES` | `--allow-write-queries` | `false` | Enable write operations (`INSERT`, `UPDATE`, `DELETE`, etc.). Accepts `true`, `1`, or `yes` |
+| `QUERY_TIMEOUT_MINUTES` | `--query-timeout-minutes` | `5` | Client-side query timeout in minutes. Queries exceeding this are cancelled automatically. `0` disables the timeout |
+| `MAX_CONCURRENT_QUERIES` | `--max-concurrent-queries` | `1` | Maximum number of concurrent tool calls. Excess calls are rejected immediately with an error asking the caller to wait |
+| **Session & Watermark** | | | |
+| `TRINO_SESSION_PROPERTIES` | `--session-properties` | *(none)* | JSON object of Trino session properties (e.g. `{"query_max_run_time": "30s"}`) |
+| `TRINO_MCP_CUSTOM_WATERMARK` | `--custom-watermark` | *(none)* | JSON object for custom query watermark. Values can be literal strings or `"env:VAR"` to resolve from env vars |
+
+#### Example `.env` file
 
 ```bash
-# Required
-TRINO_HOST=localhost              # Your Trino server hostname
-TRINO_PORT=8080                   # Trino server port (auto-set to 443 for Azure SPN/OAuth2)
-TRINO_USER=trino                  # Username (auto-detected from JWT for Azure SPN)
-TRINO_HTTP_SCHEME=http            # http or https (auto-set to https for Azure SPN/OAuth2)
-
-# Optional
-TRINO_CATALOG=my_catalog          # Default catalog
-TRINO_SCHEMA=my_schema            # Default schema
+# Connection
+TRINO_HOST=localhost
+TRINO_PORT=8080
+TRINO_USER=trino
+TRINO_HTTP_SCHEME=http
+TRINO_CATALOG=my_catalog
+TRINO_SCHEMA=my_schema
 
 # Authentication method: PASSWORD (default), OAUTH2, AZURE_SPN, or NONE
 AUTH_METHOD=PASSWORD
@@ -169,19 +199,22 @@ AUTH_METHOD=PASSWORD
 TRINO_PASSWORD=your_password
 
 # Option 2: OAuth2 (AUTH_METHOD=OAUTH2)
-# Uses Trino's built-in OAuth2 flow (browser-based)
+# Uses Trino's built-in OAuth2 flow (browser-based) — no extra config needed
 
 # Option 3: Azure Service Principal (AUTH_METHOD=AZURE_SPN)
 # See "Azure SPN Authentication" section below
 
 # Option 4: No auth (AUTH_METHOD=NONE)
 
-# Security
-ALLOW_WRITE_QUERIES=true          # Enable write operations (INSERT, UPDATE, DELETE, etc.)
-                                  # Disabled by default for safety
-                                  # accepts `true`, `1`, or `yes`
+# Security & Limits
+ALLOW_WRITE_QUERIES=false
+QUERY_TIMEOUT_MINUTES=5
+MAX_CONCURRENT_QUERIES=1
 
-# Custom Watermark
+# Session properties (optional)
+TRINO_SESSION_PROPERTIES='{"query_max_run_time": "30s"}'
+
+# Custom watermark (optional)
 # JSON object mapping watermark keys to values.
 # Use "env:VAR_NAME" to resolve from an environment variable,
 # or a plain string for a direct literal value.
