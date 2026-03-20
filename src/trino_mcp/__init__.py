@@ -8,5 +8,6 @@ except ImportError:
 # Export main classes for library usage
 from .client import TrinoClient
 from .config import TrinoConfig, load_config
+from .utils import is_read_only_query
 
-__all__ = ["TrinoClient", "TrinoConfig", "load_config", "__version__"]
+__all__ = ["TrinoClient", "TrinoConfig", "load_config", "is_read_only_query", "__version__"]

@@ -6,28 +6,12 @@ import logging
 import sys
 from typing import Annotated, Optional
 
-import sqlglot
-from sqlglot.expressions import (
-    Insert,
-    Update,
-    Delete,
-    Merge,
-    Create,
-    Drop,
-    Alter,
-    Grant,
-    Revoke,
-    Analyze,
-    Refresh,
-    Command,
-    Describe,
-    TruncateTable,
-)
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 from .config import load_config
 from .client import QueryTimeoutError, TrinoClient
+from .utils import is_read_only_query as _is_read_only_query
 
 # Setup logging
 logging.basicConfig(
@@ -162,70 +146,7 @@ def _cli_args_to_overrides(args: argparse.Namespace) -> dict:
     return overrides
 
 
-def _is_read_only_query(query: str) -> bool:
-    """Check if a SQL query is read-only using SQL parsing.
-
-    Uses sqlglot to parse the query as Trino SQL and walks the AST to detect
-    any write operations (INSERT, UPDATE, DELETE, etc.).
-
-    Note: SELECT statements with functions that have side effects are not detected
-    and will be allowed. Users should be aware that SELECT can potentially trigger
-    external writes depending on the Trino connectors and functions used.
-
-    Args:
-        query: The SQL query to check
-    Returns:
-        True if the query is read-only, False otherwise
-    """
-    # Trino write operations (sqlglot maps these to standard expression types)
-    WRITE_TYPES = (
-        Insert,
-        Update,
-        Delete,
-        Merge,
-        Create,
-        Drop,
-        Alter,
-        TruncateTable,
-        Grant,
-        Revoke,
-        Analyze,
-        Refresh,
-    )
-
-    try:
-        # Parse using the Trino dialect
-        expr = sqlglot.parse_one(query, read="trino")
-    except Exception as e:
-        # If parsing fails, treat as non-read-only for safety
-        logger.warning(f"Failed to parse query as Trino SQL: {str(e)}")
-        return False
-
-    # Describe is read-only
-    if isinstance(expr, Describe):
-        return True
-
-    # Check if it's a Command statement (SHOW, EXPLAIN, etc.)
-    # These are read-only commands but parsed as Command type
-    if isinstance(expr, Command):
-        # Extract the command text to check
-        query_upper = query.strip().upper()
-
-        # EXPLAIN ANALYZE executes the query, so it's NOT read-only
-        if query_upper.startswith("EXPLAIN") and "ANALYZE" in query_upper:
-            return False
-
-        # SHOW and EXPLAIN (without ANALYZE) are read-only
-        # Use exact word matching to avoid false positives like "SHOWING"
-        query_words = query_upper.split()
-        if query_words and query_words[0] in ("SHOW", "EXPLAIN"):
-            return True
-
-        # Other commands are considered write operations for safety
-        return False
-
-    # Walk the AST for any write operation
-    return not any(isinstance(node, WRITE_TYPES) for node in expr.walk())
+# _is_read_only_query is imported from .utils
 
 
 def _parse_table_identifier(table: str, catalog: str, schema: str) -> tuple:
