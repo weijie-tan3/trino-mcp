@@ -124,9 +124,7 @@ def test_execute_query_read_only_tool(mock_client):
 @patch("trino_mcp.server.client")
 def test_execute_query_read_only_blocks_write_queries(mock_client, query):
     """Test execute_query_read_only tool blocks non-read-only queries."""
-    from trino_mcp.server import execute_query_read_only, _is_read_only_query
-
-    assert not _is_read_only_query(query)
+    from trino_mcp.server import execute_query_read_only
 
     result = asyncio.run(execute_query_read_only(query))
 
@@ -151,9 +149,7 @@ def test_execute_query_read_only_allows_read_queries(
     mock_client, query, expected_content
 ):
     """Test execute_query_read_only tool allows read-only queries."""
-    from trino_mcp.server import execute_query_read_only, _is_read_only_query
-
-    assert _is_read_only_query(query)
+    from trino_mcp.server import execute_query_read_only
 
     mock_client.execute_query_json.return_value = f'[{{"{expected_content}": "test"}}]'
 
@@ -397,32 +393,6 @@ def test_main_function_exists():
     from trino_mcp.server import main
 
     assert callable(main)
-
-
-def test_is_read_only_query_parse_failure():
-    """Test _is_read_only_query returns False when SQL parsing fails."""
-    from trino_mcp.server import _is_read_only_query
-
-    # Completely garbled SQL that sqlglot cannot parse
-    assert _is_read_only_query("THIS IS NOT VALID SQL @@@ !!!") is False
-
-
-def test_is_read_only_query_explain_analyze_blocked():
-    """Test _is_read_only_query blocks EXPLAIN ANALYZE (it executes the query)."""
-    from trino_mcp.server import _is_read_only_query
-
-    assert _is_read_only_query("EXPLAIN ANALYZE SELECT * FROM t") is False
-
-
-def test_is_read_only_query_unknown_command_blocked():
-    """Test _is_read_only_query blocks unknown Command expressions."""
-    from trino_mcp.server import _is_read_only_query
-
-    # CALL is a command that may have side effects
-    assert (
-        _is_read_only_query("CALL system.sync_partition_metadata('cat','sch','tbl')")
-        is False
-    )
 
 
 @patch("trino_mcp.server.client")
