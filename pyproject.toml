@@ -21,7 +21,9 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "mcp>=1.6.0",
+    # mcp 2.0.0 removed `mcp.server.fastmcp` (renamed to `mcp.server.mcpserver`,
+    # `FastMCP` -> `MCPServer`). Lift this cap only together with that migration.
+    "mcp>=1.6.0,<2",
     "trino>=0.333.0",
     "python-dotenv>=1.0.0",
     "sqlglot>=27.0.0",
