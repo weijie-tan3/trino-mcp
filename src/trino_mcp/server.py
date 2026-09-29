@@ -518,6 +518,10 @@ def _hard_exit(code: int, flush_stdout: bool = True) -> None:
     be cancelled. Normal interpreter shutdown either waits on that thread
     forever or aborts with ``_enter_buffered_busy`` while closing stdin, so
     we flush what we need and bypass finalization with ``os._exit``.
+
+    Only call this from regular (non-signal-handler) code. ``stdout``/``stderr``
+    are shared with worker threads doing I/O, so flushing them here is only
+    safe when we're not interrupting one of those writes mid-flight.
     """
     streams = (sys.stderr, sys.stdout) if flush_stdout else (sys.stderr,)
     for stream in streams:
@@ -529,8 +533,10 @@ def _hard_exit(code: int, flush_stdout: bool = True) -> None:
 
 
 def _handle_shutdown_signal(signum, frame) -> None:
-    # stdout may be mid-write from the transport thread; don't touch it here.
-    _hard_exit(128 + signum, flush_stdout=False)
+    # No stream I/O here: a worker thread may already hold stdout/stderr's
+    # buffer lock (e.g. mid-log-write), and flushing would block waiting for
+    # it, defeating the point of a deterministic signal exit.
+    os._exit(128 + signum)
 
 
 def _install_shutdown_signal_handlers() -> None:

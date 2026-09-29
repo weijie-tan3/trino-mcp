@@ -567,13 +567,13 @@ def test_hard_exit_ignores_flush_errors():
 
 
 def test_handle_shutdown_signal_uses_signal_exit_code():
-    """Signal shutdown avoids stdout and preserves conventional exit status."""
+    """Signal shutdown performs no stream I/O and exits with a conventional status."""
     from trino_mcp.server import _handle_shutdown_signal
 
-    with patch("trino_mcp.server._hard_exit") as mock_exit:
+    with patch("trino_mcp.server.os._exit") as mock_exit:
         _handle_shutdown_signal(signal.SIGTERM, None)
 
-    mock_exit.assert_called_once_with(128 + signal.SIGTERM, flush_stdout=False)
+    mock_exit.assert_called_once_with(128 + signal.SIGTERM)
 
 
 def test_install_shutdown_signal_handlers():

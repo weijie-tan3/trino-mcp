@@ -7,10 +7,12 @@ promptly without hanging or aborting in ``_enter_buffered_busy``.
 
 import json
 import os
+import selectors
 import signal
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 
 import pytest
 
@@ -27,8 +29,33 @@ INIT = {
     },
 }
 
+HANDSHAKE_TIMEOUT = 15
 
-def _start_server():
+
+def _readline_with_timeout(pipe, timeout: float) -> bytes:
+    """Read one line from ``pipe`` without blocking past ``timeout``."""
+    selector = selectors.DefaultSelector()
+    selector.register(pipe, selectors.EVENT_READ)
+    try:
+        deadline = time.monotonic() + timeout
+        buf = bytearray()
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not selector.select(remaining):
+                raise TimeoutError(f"no handshake response within {timeout}s")
+            chunk = os.read(pipe.fileno(), 1)
+            if not chunk:
+                raise EOFError("server closed stdout before responding")
+            buf += chunk
+            if chunk == b"\n":
+                return bytes(buf)
+    finally:
+        selector.close()
+
+
+@contextmanager
+def _running_server():
+    """Start the server and guarantee it is killed/reaped, even on setup failure."""
     env = {**os.environ, "AUTH_METHOD": "NONE", "TRINO_HOST": "localhost"}
     proc = subprocess.Popen(
         [sys.executable, "-m", "trino_mcp", "--auth-method", "NONE"],
@@ -37,12 +64,18 @@ def _start_server():
         stderr=subprocess.PIPE,
         env=env,
     )
-    proc.stdin.write((json.dumps(INIT) + "\n").encode())
-    proc.stdin.flush()
-    response = json.loads(proc.stdout.readline())
-    assert response["id"] == 1
-    time.sleep(0.3)
-    return proc
+    try:
+        proc.stdin.write((json.dumps(INIT) + "\n").encode())
+        proc.stdin.flush()
+        line = _readline_with_timeout(proc.stdout, HANDSHAKE_TIMEOUT)
+        response = json.loads(line)
+        assert response["id"] == 1
+        time.sleep(0.3)
+        yield proc
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
 
 
 def _wait(proc, timeout=10):
@@ -61,12 +94,13 @@ def _wait(proc, timeout=10):
     "signame,expected", [("SIGINT", 130), ("SIGTERM", 143), ("SIGHUP", 129)]
 )
 def test_signal_with_stdin_open_exits_cleanly(signame, expected):
-    proc = _start_server()
-    proc.send_signal(getattr(signal, signame))
-    assert _wait(proc) == expected
+    with _running_server() as proc:
+        proc.send_signal(getattr(signal, signame))
+        assert _wait(proc) == expected
 
 
 def test_stdin_eof_exits_cleanly():
-    proc = _start_server()
-    proc.stdin.close()
-    assert _wait(proc) == 0
+    with _running_server() as proc:
+        proc.stdin.close()
+        assert _wait(proc) == 0
+
