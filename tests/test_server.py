@@ -2,8 +2,9 @@
 
 import asyncio
 import os
+import signal
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -29,7 +30,7 @@ def setup_env():
         os.environ.pop(key, None)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def no_hard_exit():
     """Prevent main() from killing the test process or replacing signal handlers."""
     with patch("trino_mcp.server._hard_exit") as mock_exit, patch(
@@ -500,7 +501,7 @@ def test_execute_query_query_error(mock_config, mock_client):
 @patch("trino_mcp.server.mcp")
 @patch("trino_mcp.server._init_config")
 @patch("sys.argv", ["trino-mcp"])
-def test_main_calls_mcp_run(mock_init, mock_mcp):
+def test_main_calls_mcp_run(mock_init, mock_mcp, no_hard_exit):
     """Test main() calls mcp.run()."""
     from trino_mcp.server import main
 
@@ -533,6 +534,65 @@ def test_main_hard_exits_nonzero_on_error(mock_init, mock_mcp, no_hard_exit):
     main()
 
     no_hard_exit.assert_called_once_with(1)
+
+
+def test_hard_exit_flushes_streams():
+    """_hard_exit flushes both output streams before bypassing finalization."""
+    from trino_mcp.server import _hard_exit
+
+    stderr = MagicMock()
+    stdout = MagicMock()
+    with patch("trino_mcp.server.sys.stderr", stderr), patch(
+        "trino_mcp.server.sys.stdout", stdout
+    ), patch("trino_mcp.server.os._exit") as mock_exit:
+        _hard_exit(7)
+
+    stderr.flush.assert_called_once()
+    stdout.flush.assert_called_once()
+    mock_exit.assert_called_once_with(7)
+
+
+def test_hard_exit_ignores_flush_errors():
+    """A broken output pipe must not prevent the immediate exit."""
+    from trino_mcp.server import _hard_exit
+
+    stderr = MagicMock()
+    stderr.flush.side_effect = BrokenPipeError
+    with patch("trino_mcp.server.sys.stderr", stderr), patch(
+        "trino_mcp.server.os._exit"
+    ) as mock_exit:
+        _hard_exit(3, flush_stdout=False)
+
+    mock_exit.assert_called_once_with(3)
+
+
+def test_handle_shutdown_signal_uses_signal_exit_code():
+    """Signal shutdown avoids stdout and preserves conventional exit status."""
+    from trino_mcp.server import _handle_shutdown_signal
+
+    with patch("trino_mcp.server._hard_exit") as mock_exit:
+        _handle_shutdown_signal(signal.SIGTERM, None)
+
+    mock_exit.assert_called_once_with(128 + signal.SIGTERM, flush_stdout=False)
+
+
+def test_install_shutdown_signal_handlers():
+    """All available process shutdown signals use the hard-exit handler."""
+    from trino_mcp.server import (
+        _handle_shutdown_signal,
+        _install_shutdown_signal_handlers,
+    )
+
+    with patch("trino_mcp.server.signal.signal") as mock_signal:
+        _install_shutdown_signal_handlers()
+
+    expected = [
+        call(sig, _handle_shutdown_signal)
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+    ]
+    assert mock_signal.call_args_list == expected
+
+
 # ---------------------------------------------------------------------------
 
 
@@ -612,7 +672,7 @@ def test_cli_args_to_overrides_empty():
 @patch("trino_mcp.server.mcp")
 @patch("trino_mcp.server._init_config")
 @patch("sys.argv", ["trino-mcp", "--trino-host", "cli-host", "--auth-method", "NONE"])
-def test_main_cli_args_passed_as_overrides(mock_init, mock_mcp):
+def test_main_cli_args_passed_as_overrides(mock_init, mock_mcp, no_hard_exit):
     """Test main() passes CLI args as overrides to _init_config (no env mutation)."""
     from trino_mcp.server import main
 
