@@ -3,6 +3,8 @@
 import argparse
 import asyncio
 import logging
+import os
+import signal
 import sys
 from typing import Annotated, Optional
 
@@ -509,6 +511,41 @@ def _init_config(overrides: Optional[dict] = None) -> None:
     )
 
 
+def _hard_exit(code: int, flush_stdout: bool = True) -> None:
+    """Exit immediately, skipping interpreter finalization.
+
+    The MCP SDK's stdio transport reads stdin from a worker thread that cannot
+    be cancelled. Normal interpreter shutdown either waits on that thread
+    forever or aborts with ``_enter_buffered_busy`` while closing stdin, so
+    we flush what we need and bypass finalization with ``os._exit``.
+
+    Only call this from regular (non-signal-handler) code. ``stdout``/``stderr``
+    are shared with worker threads doing I/O, so flushing them here is only
+    safe when we're not interrupting one of those writes mid-flight.
+    """
+    streams = (sys.stderr, sys.stdout) if flush_stdout else (sys.stderr,)
+    for stream in streams:
+        try:
+            stream.flush()
+        except Exception:
+            pass
+    os._exit(code)
+
+
+def _handle_shutdown_signal(signum, frame) -> None:
+    # No stream I/O here: a worker thread may already hold stdout/stderr's
+    # buffer lock (e.g. mid-log-write), and flushing would block waiting for
+    # it, defeating the point of a deterministic signal exit.
+    os._exit(128 + signum)
+
+
+def _install_shutdown_signal_handlers() -> None:
+    for name in ("SIGINT", "SIGTERM", "SIGHUP"):
+        sig = getattr(signal, name, None)
+        if sig is not None:
+            signal.signal(sig, _handle_shutdown_signal)
+
+
 def main():
     """Main entry point for the server."""
     global config, client
@@ -520,9 +557,16 @@ def main():
 
     _init_config(overrides)
 
+    _install_shutdown_signal_handlers()
     logger.info("Starting Trino MCP Server...")
-    mcp.run()
+    exit_code = 0
+    try:
+        mcp.run()
+    except BaseException:
+        logger.exception("Trino MCP Server terminated with an error")
+        exit_code = 1
     logger.info("Trino MCP Server stopped")
+    _hard_exit(exit_code)
 
 
 if __name__ == "__main__":
