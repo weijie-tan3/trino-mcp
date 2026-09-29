@@ -29,6 +29,15 @@ def setup_env():
         os.environ.pop(key, None)
 
 
+@pytest.fixture(autouse=True)
+def no_hard_exit():
+    """Prevent main() from killing the test process or replacing signal handlers."""
+    with patch("trino_mcp.server._hard_exit") as mock_exit, patch(
+        "trino_mcp.server._install_shutdown_signal_handlers"
+    ):
+        yield mock_exit
+
+
 @patch("trino_mcp.server.client")
 def test_list_catalogs_tool(mock_client):
     """Test list_catalogs tool."""
@@ -501,8 +510,29 @@ def test_main_calls_mcp_run(mock_init, mock_mcp):
     mock_mcp.run.assert_called_once()
 
 
-# ---------------------------------------------------------------------------
-# CLI argument parsing tests
+@patch("trino_mcp.server.mcp")
+@patch("trino_mcp.server._init_config")
+@patch("sys.argv", ["trino-mcp"])
+def test_main_hard_exits_after_run(mock_init, mock_mcp, no_hard_exit):
+    """main() bypasses interpreter finalization once the server loop returns."""
+    from trino_mcp.server import main
+
+    main()
+
+    no_hard_exit.assert_called_once_with(0)
+
+
+@patch("trino_mcp.server.mcp")
+@patch("trino_mcp.server._init_config")
+@patch("sys.argv", ["trino-mcp"])
+def test_main_hard_exits_nonzero_on_error(mock_init, mock_mcp, no_hard_exit):
+    """main() exits non-zero when the server loop raises."""
+    from trino_mcp.server import main
+
+    mock_mcp.run.side_effect = RuntimeError("boom")
+    main()
+
+    no_hard_exit.assert_called_once_with(1)
 # ---------------------------------------------------------------------------
 
 
